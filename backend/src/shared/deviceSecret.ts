@@ -25,12 +25,17 @@
  * device; binding it into the message makes each version's output domain distinct.
  */
 
-import { createHmac } from 'node:crypto';
-
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 
 import { config, requireConfig } from './config.js';
+import { deriveDeviceSecretWithKey, MIN_ROOT_KEY_BYTES } from './deviceSecretDerivation.js';
+import type { DeriveInput } from './deviceSecretDerivation.js';
 import { logger } from './logger.js';
+
+// Re-exported so callers have one import site for the whole scheme; the pure arithmetic
+// lives in deviceSecretDerivation.ts so it can be used without any configuration.
+export { derivationMessage, deriveDeviceSecretWithKey, MIN_ROOT_KEY_BYTES } from './deviceSecretDerivation.js';
+export type { DeriveInput } from './deviceSecretDerivation.js';
 
 export const CURRENT_KEY_VERSION = 1;
 
@@ -42,8 +47,6 @@ export const CURRENT_KEY_VERSION = 1;
  *     { "1": "<base64 32 bytes>", "2": "<base64 32 bytes>" }
  */
 type RootKeyMap = Record<string, string>;
-
-const MIN_ROOT_KEY_BYTES = 32;
 
 let client: SecretsManagerClient | undefined;
 
@@ -153,21 +156,6 @@ function loadRootKeys(): Promise<Map<number, Buffer>> {
   return cachedKeys;
 }
 
-export interface DeriveInput {
-  orgId: string;
-  deviceId: string;
-  keyVersion: number;
-}
-
-/**
- * The derivation message. Version-prefixed and colon-delimited over values that cannot
- * themselves contain a colon (both are UUIDs), so the encoding is unambiguous — no two
- * distinct inputs can produce the same message.
- */
-export function derivationMessage(input: DeriveInput): string {
-  return `v${input.keyVersion}:${input.orgId}:${input.deviceId}`;
-}
-
 export async function deriveDeviceSecret(input: DeriveInput): Promise<string> {
   const keys = await loadRootKeys();
   const rootKey = keys.get(input.keyVersion);
@@ -180,20 +168,7 @@ export async function deriveDeviceSecret(input: DeriveInput): Promise<string> {
     );
   }
 
-  return createHmac('sha256', rootKey)
-    .update(derivationMessage(input), 'utf8')
-    .digest('base64url');
-}
-
-/**
- * Pure form, for tests and for the fixture vectors the Go agent's implementation is
- * checked against. Keeping the arithmetic separate from the secret fetching is what makes
- * the derivation testable without mocking AWS.
- */
-export function deriveDeviceSecretWithKey(rootKey: Buffer, input: DeriveInput): string {
-  return createHmac('sha256', rootKey)
-    .update(derivationMessage(input), 'utf8')
-    .digest('base64url');
+  return deriveDeviceSecretWithKey(rootKey, input);
 }
 
 /** The version new enrolments are issued against: the highest version present. */

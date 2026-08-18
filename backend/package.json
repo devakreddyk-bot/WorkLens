@@ -18,7 +18,8 @@
     "build": "tsx scripts/bundle.ts",
     "migrate": "tsx scripts/migrate.ts",
     "migrate:status": "tsx scripts/migrate.ts --status",
-    "clean": "rm -rf artifacts dist coverage"
+    "clean": "rm -rf artifacts dist coverage",
+    "gen:vectors": "tsx scripts/genSignatureVectors.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1113.0",
