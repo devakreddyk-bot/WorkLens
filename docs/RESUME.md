@@ -1,7 +1,7 @@
 # RESUME — WorkLens build state
 
 **Written:** 2026-08-18 · **Repo:** `/Users/devakrkunthuri/worklens` (git, branch `main`)
-**Phases complete:** 0 and 1. **Phase 2: device API done, two handlers remain.**
+**Phases complete:** 0, 1 and 2. **Phase 3 (the Windows agent) is next.**
 
 This file is refreshed at every checkpoint. It assumes the reader has **zero memory** of
 the session that produced it.
@@ -162,7 +162,7 @@ block that fails the plan, naming the file, when a Lambda zip is missing.
 terraform / gitleaks / compliance), issue and PR templates with a privacy-impact question,
 Dependabot.
 
-### Phase 2 — partially complete, committed as `85a9736`
+### Phase 2 — complete, committed as `85a9736`, `98f31f7` and `d73b163`
 
 Done and verified (`tsc --noEmit` clean, `eslint --max-warnings 0` clean, 102 tests pass):
 
@@ -228,7 +228,27 @@ checkpoint have finished and their work is committed and independently verified:
   `vitest` myself, audited every repository query for interpolation and `org_id` scoping,
   and confirmed the derived device secret is returned but never persisted.
 
-Phase 2 has exactly two files left, both listed first in §6.
+**Phase 2 is complete.** 232 tests pass, `tsc` and `eslint --max-warnings 0` are clean,
+five compliance gates pass, and `terraform validate` is clean. The two remaining handlers
+from the last checkpoint are done:
+
+- `src/shared/migrations/runner.ts` — the migration engine, now shared by the CLI and the
+  Lambda. Verified against a live PostgreSQL 16: applies from scratch, reports up-to-date on
+  re-run, `--status` prints the ledger.
+- `src/handlers/jobs/dbMigrate.ts` — the only route migrations have into the deployed
+  database. Carries the SQL embedded; two guards stop a silently-skipped migration
+  (`assertAllMigrationsBundled` and `scripts/check-migrations.sh`, both tested by trying to
+  break them).
+- `src/handlers/auth/preTokenGeneration.ts` — resolves org/role/employee once at sign-in and
+  emits `wl:mfa` for the D7 admin gate. Fails closed except for an unprovisioned account.
+
+**A deployment-breaking gap was found and fixed while doing this.** `src/shared/db.ts` runs
+`verify-full` and fails closed without the RDS trust store, but nothing put the trust store
+in the deployment package, and `.gitignore`'s blanket `*.pem` meant it could not be
+committed. Every in-VPC Lambda would have thrown at TLS setup on its first invocation. The
+bundle now lives at `backend/assets/rds-ca-global-bundle.pem` (a published CA bundle, not a
+secret), `.gitignore` carries an explicit exception, and `bundle.ts` copies it into every
+zip — confirmed by unzipping an artifact.
 
 ## 6. What is NEXT, in order
 
@@ -392,23 +412,37 @@ Manager; the database password is managed by RDS and never enters Terraform stat
 
 ## 9. The exact next instruction
 
-> Continue Phase 2 of the WorkLens build in `/Users/devakrkunthuri/worklens`. Read
-> `docs/RESUME.md`, then `docs/PLAN.md` §2 and §4, then every file in
-> `backend/src/shared/` and `backend/src/middleware/deviceAuth.ts`.
+> Begin Phase 3 of the WorkLens build in `/Users/devakrkunthuri/worklens`: the Windows agent.
 >
-> Confirm the baseline first: `cd backend && npx tsc --noEmit && npx eslint . --max-warnings 0
-> && npx vitest run` should give 182 passing tests and no errors, and `make check-functions`
-> should report 14 functions on both sides.
+> Read `docs/RESUME.md`, then `docs/PLAN.md` §5 (agent design) and §9 (the ordered Phase 3
+> task list), then `docs/ARCHITECTURE.md` §2 for why the boundaries sit where they do.
+> Confirm the baseline first: `cd backend && npx vitest run` should give 232 passing tests,
+> and `make check-privacy check-iam check-readme check-functions check-migrations` should all
+> pass.
 >
-> Then finish Phase 2 — two files: `src/handlers/jobs/dbMigrate.ts` (factor the ledger and checksum
-> logic out of `backend/scripts/migrate.ts` into `src/shared/migrations/` so the CLI and the
-> Lambda share one implementation) and `src/handlers/auth/preTokenGeneration.ts`. Phase 2 is
-> done when `make backend-build` produces all 14 zips and all three checks are clean. Note
-> that `make backend-build` currently stops at `admin-api`, whose dashboard handler is a
-> Phase 4/5 file — so the last two Phase 2 handlers unblock the device and job functions,
-> not the whole build.
+> Build `agent/` in Go 1.23, Windows first, `CGO_ENABLED=0`. Five things will cost a day each
+> if missed:
 >
-> Do not reintroduce a `device-authorizer` Lambda: a REST API Lambda authorizer is not given
-> the request body, and the signature covers a hash of the body. Do not add a column to the
-> schema that is not already there — `backend/migrations/0001_init.sql` is authoritative,
-> and a new column is a new forward-only migration.
+> 1. **Startup order is a privacy control**, not a detail: load config → gate on the
+>    first-run notice → create the tray icon (and **exit non-zero if it cannot be created** —
+>    the agent must never run invisibly) → only then start capture goroutines.
+> 2. **The privacy filter sits between capture and the SQLite buffer**, not between buffer and
+>    upload. Excluded apps, excluded URLs and out-of-hours samples must never be written to
+>    disk at all, so no later bug can upload them and nothing is recoverable from the laptop.
+> 3. **An idle sample must drop app and title before storing.** The server's
+>    `activity_events_idle_no_attribution_chk` rejects the whole batch otherwise.
+> 4. **Install as a per-user logon Scheduled Task, not a Windows service** (deviation D5).
+>    Session-0 isolation makes a service unable to see the interactive desktop at all.
+> 5. **Write the signing code against the existing contract.** `backend/src/shared/signature.ts`
+>    and `backend/test/shared/signature.test.ts` define it:
+>    `METHOD \n PATH \n TIMESTAMP \n NONCE \n hex(sha256(BODY))`, HMAC-SHA256, hex digest,
+>    128-bit hex nonce, ±300s window. Add a shared fixture file both languages test against —
+>    this contract silently breaking is the most likely integration failure in the project.
+>
+> Use `modernc.org/sqlite` (pure Go — `mattn/go-sqlite3` breaks static cross-compilation),
+> `fyne.io/systray`, and `github.com/kbinani/screenshot`. Write the screenshot blur yourself
+> with a test asserting variance drops on a high-contrast fixture: blur is a privacy control,
+> and if it silently no-ops, sensitive pixels ship.
+>
+> Verify with `cd agent && go vet ./... && go build ./... && go test ./... -race`, and
+> `make agent-windows` for the cross-compile. Go 1.26.6 is on the Homebrew path.
