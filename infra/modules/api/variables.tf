@@ -28,11 +28,6 @@ variable "function_names" {
   type        = map(string)
 }
 
-variable "device_authorizer_invoke_arn" {
-  description = "Invoke ARN of the HMAC REQUEST authorizer function."
-  type        = string
-}
-
 variable "cognito_user_pool_arn" {
   description = "ARN of the Cognito user pool backing the dashboard authorizer."
   type        = string

@@ -4,6 +4,9 @@ export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
     environment: 'node',
+    // Runs before any src/ module is imported, because src/shared/config.ts validates the
+    // environment at load time. See test/setup.ts.
+    setupFiles: ['test/setup.ts'],
     // Handlers read configuration at module load, so each test file gets a fresh module
     // registry rather than inheriting whatever the previous file's env left behind.
     isolate: true,

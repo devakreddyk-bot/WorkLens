@@ -53,11 +53,6 @@ output "execution_log_group_name" {
   value       = aws_cloudwatch_log_group.execution.name
 }
 
-output "device_authorizer_id" {
-  description = "Id of the HMAC REQUEST authorizer."
-  value       = aws_api_gateway_authorizer.device.id
-}
-
 output "dashboard_authorizer_id" {
   description = "Id of the Cognito user pool authorizer."
   value       = aws_api_gateway_authorizer.dashboard.id

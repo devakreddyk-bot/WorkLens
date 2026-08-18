@@ -62,21 +62,6 @@ output "admin_api_role_name" {
   value       = module.function["admin-api"].role_name
 }
 
-output "device_authorizer_function_name" {
-  description = "Name of the API Gateway REQUEST authorizer function."
-  value       = module.function["device-authorizer"].function_name
-}
-
-output "device_authorizer_invoke_arn" {
-  description = "Invoke ARN of the API Gateway REQUEST authorizer function."
-  value       = module.function["device-authorizer"].invoke_arn
-}
-
-output "device_authorizer_function_arn" {
-  description = "ARN of the API Gateway REQUEST authorizer function."
-  value       = module.function["device-authorizer"].arn
-}
-
 output "aggregate_timesheets_function_name" {
   description = "Name of the nightly aggregation function."
   value       = module.function["aggregate-timesheets"].function_name

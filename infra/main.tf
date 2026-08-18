@@ -245,8 +245,7 @@ module "api" {
   invoke_arns    = module.lambda.invoke_arns
   function_names = module.lambda.function_names
 
-  device_authorizer_invoke_arn = module.lambda.device_authorizer_invoke_arn
-  cognito_user_pool_arn        = module.auth.user_pool_arn
+  cognito_user_pool_arn = module.auth.user_pool_arn
 
   throttle_rate_limit  = var.api_throttle_rate_limit
   throttle_burst_limit = var.api_throttle_burst_limit

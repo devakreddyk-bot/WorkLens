@@ -256,21 +256,6 @@ locals {
       policy_statements      = [local.stmt_db_connect]
     }
 
-    "device-authorizer" = {
-      description            = "API Gateway REQUEST authorizer - HMAC signature, timestamp window, nonce and revocation checks (D3)"
-      memory_size            = 512
-      timeout                = 10
-      in_vpc                 = true
-      reserved_concurrency   = -1
-      ephemeral_storage_size = 512
-      environment            = merge(local.db_env, local.device_auth_env)
-      policy_statements = [
-        local.stmt_db_connect,
-        local.stmt_read_root_key,
-        local.stmt_decrypt_secrets,
-      ]
-    }
-
     "reporting-api" = {
       description            = "Dashboard read routes - overview, timesheets, activity, screenshot URLs, CSV export"
       memory_size            = 1024

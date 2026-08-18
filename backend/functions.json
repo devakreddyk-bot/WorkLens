@@ -20,7 +20,11 @@
     "",
     "db-migrate embeds backend/migrations/*.sql via esbuild's text loader, because",
     "RDS lives in a private subnet with no public access: a laptop cannot reach it, so the",
-    "migration runner has to ship into the VPC with the SQL inside its own bundle."
+    "migration runner has to ship into the VPC with the SQL inside its own bundle.",
+    "",
+    "There is deliberately no device-authorizer function. A REST API Lambda authorizer is",
+    "not given the request body, and the agent signature covers a hash of the body, so HMAC",
+    "verification runs inside each device handler via src/middleware/deviceAuth.ts."
   ],
   "functions": [
     {
@@ -49,15 +53,6 @@
       "timeout": 300,
       "memory": 1024,
       "description": "Applies forward-only migrations from inside the VPC; RDS is not publicly reachable so this is the only path in."
-    },
-    {
-      "name": "device-authorizer",
-      "entry": "src/handlers/device/authorizer.ts",
-      "handler": "index.handler",
-      "vpc": true,
-      "timeout": 10,
-      "memory": 512,
-      "description": "Verifies HMAC-signed agent requests: signature, timestamp window, nonce, revocation."
     },
     {
       "name": "device-config",

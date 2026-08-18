@@ -4,8 +4,10 @@
 # REST rather than HTTP API because AWS WAF cannot be attached to an HTTP API,
 # and docs/PLAN.md section 6 requires a WebACL on the API - see deviation D2.
 #
-# Two authorizers:
-#   * device  - REQUEST Lambda authorizer running the HMAC checks (D3). Result
+# One authorizer. The Phase 0 plan called for a device authorizer too; it was removed
+# because a REST API Lambda authorizer is never given the request body, and the agent's
+# signature covers a hash of the body — see the note on `authorization` below.
+#   * device routes - verified inside the handler by src/middleware/deviceAuth.ts. Result
 #               caching is disabled: every request carries its own signature,
 #               timestamp and nonce, so a cached decision would defeat replay
 #               protection.
@@ -83,8 +85,8 @@ locals {
   )
 
   # ---- routes ------------------------------------------------------------
-  # auth: "device" -> HMAC Lambda authorizer, "cognito" -> user pool
-  # authorizer, "none" -> open (enrollment only).
+  # auth: "device" -> HMAC verified in-handler (gateway authorization NONE),
+  # "cognito" -> user pool authorizer, "none" -> open (enrollment only).
   routes = {
     # Device API
     "POST /device/enroll"                    = { path = "device/enroll", method = "POST", function = "enroll", auth = "none" }
@@ -211,61 +213,6 @@ resource "aws_api_gateway_resource" "d5" {
 
 # --- Authorizers -----------------------------------------------------------
 
-data "aws_iam_policy_document" "authorizer_assume" {
-  statement {
-    sid     = "ApiGatewayAssumeRole"
-    effect  = "Allow"
-    actions = ["sts:AssumeRole"]
-
-    principals {
-      type        = "Service"
-      identifiers = ["apigateway.amazonaws.com"]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "aws:SourceAccount"
-      values   = [local.account_id]
-    }
-  }
-}
-
-resource "aws_iam_role" "authorizer_invoke" {
-  name               = "${var.name_prefix}-api-authorizer-invoke"
-  description        = "Lets API Gateway invoke the device HMAC authorizer"
-  assume_role_policy = data.aws_iam_policy_document.authorizer_assume.json
-
-  tags = var.tags
-}
-
-data "aws_iam_policy_document" "authorizer_invoke" {
-  statement {
-    sid       = "InvokeDeviceAuthorizer"
-    effect    = "Allow"
-    actions   = ["lambda:InvokeFunction"]
-    resources = ["arn:${local.partition}:lambda:${local.region}:${local.account_id}:function:${var.function_names["device-authorizer"]}"]
-  }
-}
-
-resource "aws_iam_role_policy" "authorizer_invoke" {
-  name   = "invoke-device-authorizer"
-  role   = aws_iam_role.authorizer_invoke.id
-  policy = data.aws_iam_policy_document.authorizer_invoke.json
-}
-
-resource "aws_api_gateway_authorizer" "device" {
-  name                   = "${var.name_prefix}-device-hmac"
-  rest_api_id            = aws_api_gateway_rest_api.this.id
-  type                   = "REQUEST"
-  authorizer_uri         = var.device_authorizer_invoke_arn
-  authorizer_credentials = aws_iam_role.authorizer_invoke.arn
-  identity_source        = "method.request.header.X-WL-Device,method.request.header.X-WL-Timestamp,method.request.header.X-WL-Nonce,method.request.header.X-WL-Signature"
-
-  # Zero TTL: the authorizer verifies a per-request signature, timestamp window
-  # and nonce. Caching a decision would make replay protection meaningless.
-  authorizer_result_ttl_in_seconds = 0
-}
-
 resource "aws_api_gateway_authorizer" "dashboard" {
   name            = "${var.name_prefix}-dashboard-cognito"
   rest_api_id     = aws_api_gateway_rest_api.this.id
@@ -284,8 +231,14 @@ resource "aws_api_gateway_method" "this" {
   http_method      = each.value.method
   api_key_required = false
 
-  authorization = each.value.auth == "device" ? "CUSTOM" : (each.value.auth == "cognito" ? "COGNITO_USER_POOLS" : "NONE")
-  authorizer_id = each.value.auth == "device" ? aws_api_gateway_authorizer.device.id : (each.value.auth == "cognito" ? aws_api_gateway_authorizer.dashboard.id : null)
+  # "device" resolves to NONE at the gateway: HMAC verification happens inside the
+  # handler, not in an authorizer. A REST API Lambda authorizer is not given the request
+  # body, and the signature covers a hash of the body, so the check is impossible there.
+  # Verifying in-handler also avoids an extra Lambda invocation per request that could
+  # never be cached — every request carries a fresh nonce, so every authorizer result
+  # would be a cache miss.
+  authorization = each.value.auth == "cognito" ? "COGNITO_USER_POOLS" : "NONE"
+  authorizer_id = each.value.auth == "cognito" ? aws_api_gateway_authorizer.dashboard.id : null
 
   request_parameters = each.value.auth == "device" ? {
     "method.request.header.X-WL-Device"    = true
@@ -443,7 +396,6 @@ resource "aws_api_gateway_deployment" "this" {
       local.routes,
       local.cors_paths,
       var.cors_allowed_origins,
-      aws_api_gateway_authorizer.device.id,
       aws_api_gateway_authorizer.dashboard.id,
     ]))
   }
@@ -489,7 +441,6 @@ resource "aws_api_gateway_stage" "this" {
       responseLatency    = "$context.responseLatency"
       sourceIp           = "$context.identity.sourceIp"
       userAgent          = "$context.identity.userAgent"
-      deviceId           = "$context.authorizer.deviceId"
       cognitoSub         = "$context.authorizer.claims.sub"
       errorMessage       = "$context.error.message"
       wafStatus          = "$context.wafResponseCode"
