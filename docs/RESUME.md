@@ -1,7 +1,7 @@
 # RESUME — WorkLens build state
 
 **Written:** 2026-08-18 · **Repo:** `/Users/devakrkunthuri/worklens` (git, branch `main`)
-**Phases complete:** 0 and 1. **Phase 2 in progress.**
+**Phases complete:** 0 and 1. **Phase 2: device API done, two handlers remain.**
 
 This file is refreshed at every checkpoint. It assumes the reader has **zero memory** of
 the session that produced it.
@@ -177,34 +177,58 @@ Done and verified (`tsc --noEmit` clean, `eslint --max-warnings 0` clean, 102 te
 | `src/shared/http.ts` | `withHandler`: request id, entry/exit logging, error→response mapping, security headers, body parsing with a size cap. |
 | `src/middleware/deviceAuth.ts` | `authenticateDevice`, `withDeviceAuth`, `withAcknowledgedNotice`. |
 
+**The device API is also complete** (committed as `98f31f7`; 182 tests pass, `tsc` and
+`eslint --max-warnings 0` clean, all four gates pass):
+
+- `src/repositories/{executor,devices,enrollment,events,screenshots,monitoringConfig,audit}.ts`
+- `src/schemas/{common,parse,enroll,events,screenshots,heartbeat}.ts`
+- `src/handlers/device/{enroll,config,ingestEvents,screenshotPresign,screenshotComplete,heartbeat,noticeAck}.ts`
+- `test/helpers/{dbMock,deviceRequest}.ts` and five handler test files
+
+Decisions in there worth not re-litigating:
+
+- **`category` and `project_id` are rejected from the device**, though the columns exist.
+  They are derived server-side from `app_categories` / `project_rules` at aggregation;
+  accepting them would let a tampered agent label its own time.
+- **`notice-ack` takes no body.** A client-supplied timestamp is self-reported, and that
+  column is the deployer's evidence a person was informed. Idempotent via
+  `coalesce(notice_acknowledged_at, now())` with a CTE reporting the pre-update value, so
+  the audit row is written exactly once.
+- **Health counters are logged, not stored.** `devices` has no column for buffer depth or
+  dropped events. Adding one is a schema decision, not a handler's call.
+- **Enrolment inserts the device before marking the token used**, because
+  `enrollment_tokens_used_chk` and the FK on `used_by_device_id` require it in that order.
+  The losing racer's `UPDATE ... WHERE used_at IS NULL` returns zero rows and aborts the
+  transaction, discarding its device row.
+- **The ingest quota charges rejected batches too**, or exceeding the limit would make
+  hammering the endpoint free.
+- **`bytes` is `byte_count`** in the presign request, matching the column
+  (`docs/PLAN.md` §2 says `bytes`).
+
+Two S3 presigner behaviours that would have failed in production, now pinned by tests:
+`content-type` sits in the presigner's default `unsignableHeaders`, so it must be named in
+`signableHeaders` or the URL does not constrain what gets uploaded — which is the entire
+point of a constrained presign. And with SDK defaults `getSignedUrl` signs a CRC32 of the
+empty request body into the URL, so every real upload fails a checksum mismatch;
+`requestChecksumCalculation: 'WHEN_REQUIRED'` is correctness, not tuning.
+
+Also worth knowing: `Date.parse('2026-02-30T00:00:00Z')` does **not** return NaN in V8 — it
+rolls forward to 2 March, which would silently move an event into a different timesheet
+day. `src/schemas/common.ts` validates the day against the month's real length.
+
 ---
 
 ## 5. What is IN PROGRESS
 
-**Two background agents were running when this checkpoint was written. Check their output
-before assuming anything is missing.**
+**Nothing is half-written.** Both background agents that were running at the previous
+checkpoint have finished and their work is committed and independently verified:
 
-1. **Terraform module READMEs** — writing `infra/modules/*/README.md` (11 files). Some had
-   landed and were included in `85a9736`. Purely additive documentation; no `.tf` file is
-   touched. If any are missing, the remaining work is to write them from the module source.
+- All 11 Terraform module READMEs are present.
+- The device API is complete — see §4. I re-ran `tsc`, `eslint --max-warnings 0` and
+  `vitest` myself, audited every repository query for interpolation and `org_id` scoping,
+  and confirmed the derived device secret is returned but never persisted.
 
-2. **Device repositories, schemas and handlers** — asked to create, against the shared
-   layer above:
-   - `src/repositories/{devices,enrollment,events,screenshots,monitoringConfig,audit}.ts`
-   - `src/schemas/` — Zod, `.strict()`, mirroring the DB CHECK constraints including the
-     idle-attribution rule
-   - `src/handlers/device/{enroll,config,ingestEvents,screenshotPresign,screenshotComplete,heartbeat,noticeAck}.ts`
-   - tests for the failure paths
-
-   **Verify its work rather than trusting it**: run `npx tsc --noEmit`,
-   `npx eslint . --max-warnings 0`, `npx vitest run` in `backend/`, and read the
-   repository SQL for `org_id` scoping and parameterisation. If the work is absent or
-   unsound, this is the next thing to build — the specification for each handler is in
-   `docs/PLAN.md` §4 and the data flow in §2.
-
-Nothing else is half-written. Every file listed in §4 is complete.
-
----
+Phase 2 has exactly two files left, both listed first in §6.
 
 ## 6. What is NEXT, in order
 
@@ -372,18 +396,17 @@ Manager; the database password is managed by RDS and never enters Terraform stat
 > `docs/RESUME.md`, then `docs/PLAN.md` §2 and §4, then every file in
 > `backend/src/shared/` and `backend/src/middleware/deviceAuth.ts`.
 >
-> First, establish what exists: run `git log --oneline`, `git status`, and
-> `ls backend/src/repositories backend/src/schemas backend/src/handlers 2>&1`. A background
-> agent was mid-way through creating the device repositories, Zod schemas and handlers — if
-> they are present, verify them with `cd backend && npx tsc --noEmit && npx eslint .
-> --max-warnings 0 && npx vitest run`, and read the repository SQL to confirm every query
-> is parameterised and scoped by `org_id`. If they are absent or unsound, build them per
-> `docs/PLAN.md` §4.
+> Confirm the baseline first: `cd backend && npx tsc --noEmit && npx eslint . --max-warnings 0
+> && npx vitest run` should give 182 passing tests and no errors, and `make check-functions`
+> should report 14 functions on both sides.
 >
-> Then finish Phase 2: `src/handlers/jobs/dbMigrate.ts` (factor the ledger and checksum
+> Then finish Phase 2 — two files: `src/handlers/jobs/dbMigrate.ts` (factor the ledger and checksum
 > logic out of `backend/scripts/migrate.ts` into `src/shared/migrations/` so the CLI and the
 > Lambda share one implementation) and `src/handlers/auth/preTokenGeneration.ts`. Phase 2 is
-> done when `make backend-build` produces all 14 zips and all three checks are clean.
+> done when `make backend-build` produces all 14 zips and all three checks are clean. Note
+> that `make backend-build` currently stops at `admin-api`, whose dashboard handler is a
+> Phase 4/5 file — so the last two Phase 2 handlers unblock the device and job functions,
+> not the whole build.
 >
 > Do not reintroduce a `device-authorizer` Lambda: a REST API Lambda authorizer is not given
 > the request body, and the signature covers a hash of the body. Do not add a column to the
