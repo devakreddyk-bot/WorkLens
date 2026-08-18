@@ -221,7 +221,7 @@ module "auth" {
   logout_urls   = local.cognito_logout_urls
 
   advanced_security_mode = var.cognito_advanced_security_mode
-  deletion_protection    = var.db_deletion_protection
+  deletion_protection    = var.cognito_deletion_protection
 
   pre_token_generation_lambda_arn           = module.lambda.pre_token_generation_function_arn
   pre_token_generation_lambda_function_name = module.lambda.pre_token_generation_function_name
@@ -322,8 +322,11 @@ module "alarms" {
   lambda_function_names = module.lambda.function_names
   ingest_function_name  = module.lambda.function_names["ingest-events"]
 
-  rds_instance_id          = module.database.instance_id
-  rds_allocated_storage_gb = var.db_allocated_storage
+  rds_instance_id = module.database.instance_id
+  # The instance's *current* allocated storage, not var.db_allocated_storage: storage
+  # autoscaling means the two diverge, and a threshold pinned to the initial 20 GB would
+  # become a 4% threshold on a grown 100 GB volume.
+  rds_allocated_storage_gb = module.database.allocated_storage
 }
 
 # ---------------------------------------------------------------------------

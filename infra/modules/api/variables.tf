@@ -90,6 +90,19 @@ variable "metrics_enabled" {
 variable "cors_allowed_origins" {
   description = "Origins allowed by the CORS preflight responses on dashboard routes."
   type        = list(string)
+  validation {
+    condition     = length(var.cors_allowed_origins) == 1
+    error_message = <<-EOT
+      Exactly one origin is supported. The CORS preflight is an API Gateway MOCK
+      integration, which can only return a single static Access-Control-Allow-Origin
+      header — with several origins configured, every origin but the first would silently
+      fail in a browser. Supporting more requires moving the OPTIONS response into a
+      Lambda that echoes the request Origin after checking it against an allowlist.
+      Failing at plan time is better than shipping a dashboard that only works from one
+      of the hostnames it was configured for.
+    EOT
+  }
+
 }
 
 variable "minimum_compression_size" {

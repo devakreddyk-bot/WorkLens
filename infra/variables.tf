@@ -122,6 +122,17 @@ variable "db_backup_retention_days" {
   }
 }
 
+variable "cognito_deletion_protection" {
+  description = <<-EOT
+    Guards the Cognito user pool against deletion. Separate from db_deletion_protection on
+    purpose: losing the pool means every dashboard account has to be recreated and every
+    user re-enrols MFA, which is a different kind of loss from the database and should not
+    be turned off as a side effect of tearing down a database.
+  EOT
+  type        = bool
+  default     = true
+}
+
 variable "db_deletion_protection" {
   description = <<-EOT
     Guards against `terraform destroy` taking the database with it. Left on by default;

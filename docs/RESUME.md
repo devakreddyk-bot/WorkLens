@@ -267,13 +267,12 @@ one (§2, eleventh deviation).
 - Alarms need identifiers of resources that encrypt with `observability`'s CMKs. That is
   why `modules/alarms/` is separate and applied last.
 
-**`backend/functions.json` is shared with Terraform.** Adding a function means adding it
-there *and* to `modules/lambda/main.tf`'s catalogue. Verify with:
-```bash
-diff <(python3 -c "import json;print('\n'.join(sorted(f['name'] for f in json.load(open('backend/functions.json'))['functions'])))") \
-     <(grep -oE '^    "[a-z0-9-]+" = \{' infra/modules/lambda/main.tf | sed 's/[^a-z0-9-]//g' | sort)
-```
-Both currently list the same 14.
+**`backend/functions.json` is a second hand-maintained list, not a source Terraform
+reads.** An earlier comment in it claimed Terraform consumed it with
+`jsondecode(file(...))`; nothing does. Adding a function means adding it there *and* to
+`infra/modules/lambda/main.tf`'s catalogue. `scripts/check-functions.sh` (in `make ci` and
+in the CI compliance job) fails the build when they disagree, naming which side is missing
+what. Both currently list the same 14.
 
 **`# iam-wildcard-ok:` is a build gate.** `scripts/check-iam.sh` fails on
 `Resource = "*"` unless annotated with a reason, **on the same line or the line directly
@@ -312,6 +311,41 @@ true).
 **`AGGREGATION_LOOKBACK_DAYS` defaults to 3, not 1**, because an agent offline overnight
 uploads yesterday's events today and that late data must land in the right day's timesheet.
 Aggregation is an idempotent upsert, so recomputing a settled day is free.
+
+### Defects found and fixed after the Phase 2 commit
+
+A documentation pass over the Terraform surfaced seven real problems. Five are fixed;
+two are recorded below as open.
+
+Fixed:
+1. **Critical — every device route lacked the device-root-key grant.** Removing the device
+   authorizer moved HMAC verification into each handler, but only `enroll` carried
+   `stmt_read_root_key` / `stmt_decrypt_secrets` and `DEVICE_ROOT_KEY_SECRET_ARN`. Every
+   other authenticated device request would have thrown at
+   `requireConfig('DEVICE_ROOT_KEY_SECRET_ARN')` and returned 500. Now expressed once as
+   `local.device_route_env` / `local.device_route_policies` and applied to all six.
+2. `modules/lambda`'s file header still claimed pre-token-generation runs outside the VPC.
+3. `modules/api` hard-coded `cors_allowed_origins[0]`, so with several origins configured
+   every one but the first silently failed in a browser. A MOCK preflight cannot return a
+   conditional origin, so the variable is now validated to hold exactly one entry, with the
+   message explaining what supporting more would require. Plan-time failure beats a
+   dashboard that works from one of its configured hostnames.
+4. The root stack passed one `db_deletion_protection` to both RDS *and* the Cognito pool, so
+   disabling it to tear down a database also unprotected the user pool. Now
+   `cognito_deletion_protection`.
+5. The RDS free-storage alarm derived its threshold from `var.db_allocated_storage` while
+   autoscaling is enabled, so a grown volume would make a stated 20% threshold effectively
+   4%. Now reads `module.database.allocated_storage`.
+
+Open, with the reasoning recorded so the next session need not rediscover it:
+- `modules/database` sets `prevent_destroy = false`. Deliberate — `prevent_destroy` cannot
+  be driven by a variable, so `true` would force anyone tearing down a staging stack to edit
+  a shared module. `deletion_protection` (default true) is the guard instead, and being
+  enforced by RDS it also blocks a console or CLI deletion. The misleading comment is fixed;
+  the value is intentional.
+- `final_snapshot_identifier` in `modules/database` is a fixed name, so a second teardown of
+  the same environment collides with the snapshot left by the first. Worth suffixing with a
+  timestamp.
 
 ---
 

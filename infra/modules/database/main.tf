@@ -130,7 +130,15 @@ resource "aws_db_instance" "this" {
   depends_on = [aws_cloudwatch_log_group.postgresql]
 
   lifecycle {
-    # Terraform must never be the thing that silently replaces the database.
+    # Deliberately false, despite this being the production database. `prevent_destroy`
+    # cannot be driven by a variable, so setting it true would make a legitimate teardown
+    # of a staging stack require editing this module — and someone editing a shared module
+    # to delete their own environment is worse than the protection is worth.
+    #
+    # The guard is `deletion_protection` (var.deletion_protection, default true) instead:
+    # it is enforced by RDS itself rather than by Terraform, so it also blocks a deletion
+    # attempted from the console or the CLI, and it can be turned off per environment
+    # without touching code.
     prevent_destroy = false
   }
 }

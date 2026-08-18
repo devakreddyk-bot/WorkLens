@@ -62,3 +62,13 @@ output "parameter_group_name" {
   description = "Name of the parameter group applied to the instance."
   value       = aws_db_parameter_group.this.name
 }
+
+output "allocated_storage" {
+  description = <<-EOT
+    Current allocated storage in GB. Read from the instance rather than echoed back from
+    the input variable, because storage autoscaling changes it out from under Terraform:
+    an alarm threshold derived from the *initial* value gets tighter every time the volume
+    grows, and would eventually fire constantly on a healthy database.
+  EOT
+  value       = aws_db_instance.this.allocated_storage
+}

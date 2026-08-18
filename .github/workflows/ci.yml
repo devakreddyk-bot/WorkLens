@@ -308,3 +308,6 @@ jobs:
 
       - name: README responsible-use section is present and complete
         run: ./scripts/check-readme.sh
+
+      - name: Lambda inventory matches Terraform
+        run: ./scripts/check-functions.sh

@@ -6,9 +6,11 @@
 # KMS-encrypted log group. Adding a function without a role is therefore not
 # possible by construction.
 #
-# Data-plane functions run inside the VPC private subnets. pre-token-generation
-# runs outside the VPC on purpose: it calls the Cognito API, and with no NAT
-# gateway (docs/PLAN.md D6) an in-VPC function could not reach it.
+# Every function runs inside the VPC private subnets, including
+# pre-token-generation: the claims it injects come from Postgres, which is only
+# reachable from there. It reaches the Cognito API through the cognito-idp
+# interface endpoint, which is why network's enable_cognito_vpc_endpoint
+# defaults to true — with no NAT gateway (docs/PLAN.md D6) there is no other route.
 # ---------------------------------------------------------------------------
 
 data "aws_region" "current" {}
@@ -46,6 +48,12 @@ locals {
     HMAC_TIMESTAMP_SKEW_SECONDS = tostring(var.hmac_timestamp_skew_seconds)
     NONCE_RETENTION_SECONDS     = tostring(var.nonce_retention_seconds)
   }
+
+  # Every device route verifies the agent's HMAC signature itself — there is no shared
+  # authorizer to hold that capability, because a REST API Lambda authorizer is never given
+  # the request body and the signature covers a hash of the body. The consequence is that
+  # each of them needs the root key and the signing parameters, not just `enroll`.
+  device_route_env = merge(local.db_env, local.device_auth_env)
 
   # ---- reusable IAM statements -------------------------------------------
   # Every statement carries the same attribute set (sid/actions/resources/
@@ -161,6 +169,14 @@ locals {
     }]
   }
 
+  # The IAM counterpart of device_route_env above: deriving a device secret means reading
+  # the root key and decrypting it through the secret's CMK.
+  device_route_policies = [
+    local.stmt_db_connect,
+    local.stmt_read_root_key,
+    local.stmt_decrypt_secrets,
+  ]
+
   # ---- function catalogue ------------------------------------------------
   # Every entry declares the same attributes, in the same types, so the map
   # stays homogeneous and `for_each` over it is unambiguous.
@@ -187,8 +203,8 @@ locals {
       in_vpc                 = true
       reserved_concurrency   = -1
       ephemeral_storage_size = 512
-      environment            = local.db_env
-      policy_statements      = [local.stmt_db_connect]
+      environment            = local.device_route_env
+      policy_statements      = local.device_route_policies
     }
 
     "ingest-events" = {
@@ -198,10 +214,10 @@ locals {
       in_vpc                 = true
       reserved_concurrency   = var.ingest_reserved_concurrency
       ephemeral_storage_size = 512
-      environment = merge(local.db_env, {
+      environment = merge(local.device_route_env, {
         MAX_EVENTS_PER_BATCH = tostring(var.max_events_per_batch)
       })
-      policy_statements = [local.stmt_db_connect]
+      policy_statements = local.device_route_policies
     }
 
     "screenshot-presign" = {
@@ -211,12 +227,11 @@ locals {
       in_vpc                 = true
       reserved_concurrency   = -1
       ephemeral_storage_size = 512
-      environment            = merge(local.db_env, local.bucket_env)
-      policy_statements = [
-        local.stmt_db_connect,
+      environment            = merge(local.device_route_env, local.bucket_env)
+      policy_statements = concat(local.device_route_policies, [
         local.stmt_s3_put_screenshot,
         local.stmt_kms_encrypt_via_s3,
-      ]
+      ])
     }
 
     "screenshot-complete" = {
@@ -226,12 +241,11 @@ locals {
       in_vpc                 = true
       reserved_concurrency   = -1
       ephemeral_storage_size = 512
-      environment            = merge(local.db_env, local.bucket_env)
-      policy_statements = [
-        local.stmt_db_connect,
+      environment            = merge(local.device_route_env, local.bucket_env)
+      policy_statements = concat(local.device_route_policies, [
         local.stmt_s3_get_screenshot,
         local.stmt_kms_decrypt_via_s3,
-      ]
+      ])
     }
 
     "heartbeat" = {
@@ -241,8 +255,8 @@ locals {
       in_vpc                 = true
       reserved_concurrency   = -1
       ephemeral_storage_size = 512
-      environment            = local.db_env
-      policy_statements      = [local.stmt_db_connect]
+      environment            = local.device_route_env
+      policy_statements      = local.device_route_policies
     }
 
     "notice-ack" = {
@@ -252,8 +266,8 @@ locals {
       in_vpc                 = true
       reserved_concurrency   = -1
       ephemeral_storage_size = 512
-      environment            = local.db_env
-      policy_statements      = [local.stmt_db_connect]
+      environment            = local.device_route_env
+      policy_statements      = local.device_route_policies
     }
 
     "reporting-api" = {

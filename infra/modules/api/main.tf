@@ -145,7 +145,9 @@ locals {
 
   cors_allow_headers = "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,Idempotency-Key"
   cors_allow_methods = "GET,POST,PATCH,PUT,DELETE,OPTIONS"
-  cors_allow_origin  = "'${var.cors_allowed_origins[0]}'"
+  # Index 0 is safe: cors_allowed_origins is validated to hold exactly one entry, because
+  # a MOCK preflight cannot return a conditional origin. See the variable's validation.
+  cors_allow_origin = "'${var.cors_allowed_origins[0]}'"
 
   create_custom_domain = var.custom_domain_name != null && var.acm_certificate_arn != null
 }
