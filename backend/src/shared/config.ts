@@ -58,6 +58,14 @@ const schema = z.object({
    * Raise it only behind RDS Proxy.
    */
   DB_POOL_MAX: intFromEnv(1, 20).default('1'),
+  /**
+   * RDS-managed master credential, read only by the db-migrate function. Migration 0003
+   * grants `rds_iam`, which requires `rds_superuser`, so the application role cannot
+   * bootstrap its own privileges — migrations run as the master user.
+   */
+  DB_MASTER_SECRET_ARN: z.string().min(1).optional(),
+  /** The role migrations grant to. Informational; the grants themselves live in 0003. */
+  DB_APP_USER: z.string().optional(),
 
   // --- device credentials ---
   DEVICE_ROOT_KEY_SECRET_ARN: z.string().min(1).optional(),

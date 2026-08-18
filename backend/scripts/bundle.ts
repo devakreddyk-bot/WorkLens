@@ -14,6 +14,12 @@
  *  - **`pg` is bundled with `pg-native` marked external.** `pg` conditionally requires
  *    `pg-native`, which is not installed and needs a C toolchain; marking it external
  *    keeps esbuild from failing on a require it will never execute at runtime.
+ *  - **The RDS CA bundle ships in every zip.** `src/shared/db.ts` runs with
+ *    `DB_SSL_MODE=verify-full` and fails closed when it cannot find the trust store, which
+ *    is the right behaviour — silently downgrading to an unverified connection is exactly
+ *    what verify-full exists to prevent. The functions are in private subnets with no
+ *    internet route, so the bundle cannot be fetched at runtime and has to travel with the
+ *    code.
  *  - **Zips are built deterministically.** All entries get a fixed mtime, so an unchanged
  *    handler produces a byte-identical zip and Terraform sees no diff. Without this,
  *    every build would show as a change to every function.
@@ -24,7 +30,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile, readdir } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, writeFile, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,6 +46,13 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const BACKEND_ROOT = resolve(HERE, '..');
 const ARTIFACT_DIR = join(BACKEND_ROOT, 'artifacts');
 const BUILD_DIR = join(BACKEND_ROOT, '.build');
+
+/**
+ * The AWS RDS public trust store, committed at backend/assets/. Copied beside every
+ * handler so `src/shared/db.ts` can verify the database's certificate. See the note above.
+ */
+const CA_BUNDLE_NAME = 'rds-ca-global-bundle.pem';
+const CA_BUNDLE_SOURCE = join(BACKEND_ROOT, 'assets', CA_BUNDLE_NAME);
 
 /**
  * Fixed timestamp for every zip entry, so builds are reproducible.
@@ -236,6 +249,10 @@ async function bundleFunction(spec: FunctionSpec): Promise<{ bytes: number; sha2
     'utf8',
   );
 
+  // Every function in this project talks to Postgres, so every zip gets the trust store.
+  // If that ever stops being true, gate this on the function needing a VPC.
+  await copyFile(CA_BUNDLE_SOURCE, join(outDir, CA_BUNDLE_NAME));
+
   const entries = await collectFiles(outDir);
   const zipPath = join(ARTIFACT_DIR, `${spec.name}.zip`);
   const bytes = await writeZip(entries, zipPath);
@@ -257,6 +274,16 @@ async function main(): Promise<void> {
     throw new Error(
       `No functions matched ${JSON.stringify(filters)}. Available: ` +
         manifest.functions.map((f) => f.name).join(', '),
+    );
+  }
+
+  if (!existsSync(CA_BUNDLE_SOURCE)) {
+    throw new Error(
+      `${CA_BUNDLE_NAME} is missing from backend/assets/. Every deployment package needs ` +
+        `it, because the functions verify the database certificate and have no internet ` +
+        `route to fetch it at runtime. Restore it with:\n\n` +
+        `  curl -fsSL -o backend/assets/${CA_BUNDLE_NAME} \\\n` +
+        `    https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem\n`,
     );
   }
 

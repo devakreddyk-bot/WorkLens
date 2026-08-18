@@ -82,6 +82,11 @@ override.tf.json
 
 # --- Secrets and key material ----------------------------------------------
 *.pem
+# ...except the AWS RDS public trust store. It is a published CA bundle, not a secret, and
+# it has to be committed: the in-VPC Lambdas connect with DB_SSL_MODE=verify-full and have
+# no route to the internet to fetch it at runtime, so it ships inside each deployment zip.
+# Committing it also keeps `make backend-build` reproducible offline and in CI.
+!backend/assets/rds-ca-global-bundle.pem
 *.key
 *.p12
 *.pfx

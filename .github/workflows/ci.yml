@@ -311,3 +311,6 @@ jobs:
 
       - name: Lambda inventory matches Terraform
         run: ./scripts/check-functions.sh
+
+      - name: Every migration is bundled into the db-migrate Lambda
+        run: ./scripts/check-migrations.sh

@@ -116,7 +116,7 @@ test: agent-test backend-test ## Run every test suite
 
 build: agent-windows backend-build dashboard-build ## Build every component
 
-ci: lint test build tf-validate check-privacy check-iam check-readme check-functions ## Run everything CI runs
+ci: lint test build tf-validate check-privacy check-iam check-readme check-functions check-migrations ## Run everything CI runs
 
 clean: ## Remove build artefacts, bundles, caches and Terraform plans
 	@rm -rf $(AGENT_BIN_DIR) $(LAMBDA_ARTIFACTS)
@@ -280,9 +280,12 @@ check-readme: ## Fail if the README's Responsible & Lawful Use section is missin
 check-functions: ## Fail if backend/functions.json and the Terraform catalogue disagree
 	@./scripts/check-functions.sh
 
+check-migrations: ## Fail if a migration file is not bundled into the db-migrate Lambda
+	@./scripts/check-migrations.sh
+
 .PHONY: env-backend env-dashboard help bootstrap fmt lint test build ci clean \
 	agent-windows agent-test \
 	backend-build backend-test migrate \
 	dashboard-build dashboard-dev \
 	tf-fmt tf-fmt-check tf-validate tf-plan tf-apply \
-	check-privacy check-iam check-readme check-functions
+	check-privacy check-iam check-readme check-functions check-migrations
