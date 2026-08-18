@@ -1,0 +1,118 @@
+# Dependabot configuration for WorkLens.
+#
+# Weekly on Monday morning, Asia/Kolkata — the deployment jurisdiction's
+# timezone, so updates land at the start of a working week rather than
+# overnight. Patch and minor updates for the same ecosystem are grouped into
+# one pull request to keep the review queue small; major updates arrive
+# individually because they need reading.
+#
+# Every Dependabot pull request still passes the full CI pipeline, including
+# the privacy, IAM and responsible-use gates.
+version: 2
+
+updates:
+  # --- Go agent ------------------------------------------------------------
+  - package-ecosystem: gomod
+    directory: /agent
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    labels:
+      - dependencies
+      - agent
+    groups:
+      go-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # --- Backend Lambdas -----------------------------------------------------
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    labels:
+      - dependencies
+      - backend
+    groups:
+      backend-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # --- Dashboard -----------------------------------------------------------
+  - package-ecosystem: npm
+    directory: /dashboard
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    labels:
+      - dependencies
+      - dashboard
+    groups:
+      dashboard-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # --- Terraform providers and modules -------------------------------------
+  # Both stacks are watched: the root stack and the remote-state bootstrap.
+  - package-ecosystem: terraform
+    directories:
+      - /infra
+      - /infra/bootstrap
+      - /infra/modules/*
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    labels:
+      - dependencies
+      - infra
+
+  # --- GitHub Actions ------------------------------------------------------
+  # Actions are pinned to major tags in the workflows, so this mostly catches
+  # major bumps and newly deprecated actions.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+      include: scope
+    labels:
+      - dependencies
+      - ci

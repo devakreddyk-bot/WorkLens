@@ -1,0 +1,71 @@
+# EditorConfig — https://editorconfig.org
+# Canonical whitespace rules for WorkLens. gofmt, prettier/eslint and
+# `terraform fmt` all agree with what is written here; if you change a rule,
+# change the corresponding formatter config in the same commit.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+max_line_length = 100
+
+# Go is gofmt's business: hard tabs, no line-length limit.
+[*.go]
+indent_style = tab
+indent_size = 4
+max_line_length = off
+
+[go.mod]
+indent_style = tab
+
+[Makefile]
+indent_style = tab
+indent_size = 4
+
+[makefile]
+indent_style = tab
+indent_size = 4
+
+[*.mk]
+indent_style = tab
+indent_size = 4
+
+[*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,css,scss,yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# `terraform fmt` produces two-space indentation.
+[*.{tf,tfvars,hcl}]
+indent_style = space
+indent_size = 2
+
+[*.sql]
+indent_style = space
+indent_size = 2
+
+[*.sh]
+indent_style = space
+indent_size = 2
+
+# Trailing whitespace is significant in Markdown (hard line break).
+[*.md]
+trim_trailing_whitespace = false
+max_line_length = off
+
+# Windows-consumed files keep CRLF.
+[*.{ps1,psm1,bat,cmd}]
+end_of_line = crlf
+
+# Windows Scheduled Task definition consumed by schtasks.exe (see D5 in
+# docs/PLAN.md): CRLF, and the file is UTF-8 in the repository.
+[*.xml]
+end_of_line = crlf
+indent_size = 2
+
+[LICENSE]
+insert_final_newline = true

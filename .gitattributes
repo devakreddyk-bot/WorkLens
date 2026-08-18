@@ -1,0 +1,79 @@
+# Git attributes for WorkLens.
+#
+# Default: let Git detect text files and normalise them to LF in the object
+# database. Everything below either pins an end-of-line convention because a
+# consumer requires it, or marks a file as binary so Git never rewrites it.
+* text=auto eol=lf
+
+# --- Always LF, on every platform ------------------------------------------
+# Shell scripts run in CI (Linux) and on macOS; a CR would break the shebang.
+*.sh            text eol=lf
+*.bash          text eol=lf
+# Go source: gofmt emits LF and `gofmt -l` fails on CRLF files.
+*.go            text eol=lf
+go.mod          text eol=lf
+go.sum          text eol=lf
+Makefile        text eol=lf
+*.mk            text eol=lf
+Dockerfile      text eol=lf
+*.ts            text eol=lf
+*.tsx           text eol=lf
+*.js            text eol=lf
+*.jsx           text eol=lf
+*.mjs           text eol=lf
+*.cjs           text eol=lf
+*.json          text eol=lf
+*.jsonc         text eol=lf
+*.css           text eol=lf
+*.md            text eol=lf
+*.sql           text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.tf            text eol=lf
+*.tfvars        text eol=lf
+*.tfvars.example text eol=lf
+*.hcl           text eol=lf
+.env.example    text eol=lf
+.gitignore      text eol=lf
+.gitattributes  text eol=lf
+.editorconfig   text eol=lf
+LICENSE         text eol=lf
+
+# --- Always CRLF, because Windows tooling reads them -----------------------
+*.ps1           text eol=crlf
+*.psm1          text eol=crlf
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+
+# The Windows Scheduled Task definition imported by `schtasks /Create /XML`
+# (see docs/PLAN.md D5). Task Scheduler is tolerant of the encoding but
+# expects CRLF; keep it text so diffs stay reviewable — a privacy-relevant
+# file must never become an opaque blob.
+agent/assets/*.xml  text eol=crlf
+*.xml               text eol=crlf
+
+# --- Binary: never diffed, never end-of-line converted ---------------------
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.webp          binary
+*.ico           binary
+*.pdf           binary
+*.zip           binary
+*.gz            binary
+*.exe           binary
+*.dll           binary
+*.woff          binary
+*.woff2         binary
+*.ttf           binary
+*.otf           binary
+
+# --- Diff hints ------------------------------------------------------------
+*.go            diff=golang
+*.md            diff=markdown
+
+# --- Linguist / GitHub language statistics ---------------------------------
+docs/**             linguist-documentation
+*.tf                linguist-detectable=true
+backend/artifacts/** linguist-generated=true

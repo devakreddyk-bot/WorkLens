@@ -1,0 +1,310 @@
+# WorkLens continuous integration.
+#
+# One job per toolchain, plus two gates that exist because of what this project
+# does: `secrets` (gitleaks over the full history) and `compliance` (the
+# privacy, IAM and responsible-use checks in scripts/).
+#
+# Every toolchain job is gated on the presence of its component, so the
+# pipeline is green while the monorepo is being filled in phase by phase — an
+# absent component produces a *skipped* job, never a failed one. The
+# `compliance` job is never skipped: the privacy posture is checked from the
+# first commit.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Read-only by default. No job in this workflow writes to the repository,
+# publishes a package, or comments on a pull request.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GO_VERSION: "1.23"
+  NODE_VERSION: "22"
+  TERRAFORM_VERSION: "1.9.8"
+
+jobs:
+  # Decide which component jobs have anything to do. Cheap (one checkout) and
+  # it keeps the skip logic in exactly one place.
+  detect:
+    name: Detect components
+    runs-on: ubuntu-latest
+    outputs:
+      agent: ${{ steps.components.outputs.agent }}
+      backend: ${{ steps.components.outputs.backend }}
+      dashboard: ${{ steps.components.outputs.dashboard }}
+      terraform: ${{ steps.components.outputs.terraform }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Detect present components
+        id: components
+        run: |
+          set -euo pipefail
+          present() {
+            if [ -e "$1" ]; then echo "true"; else echo "false"; fi
+          }
+          agent=$(present agent/go.mod)
+          backend=$(present backend/package.json)
+          dashboard=$(present dashboard/package.json)
+          if ls infra/*.tf >/dev/null 2>&1; then terraform=true; else terraform=false; fi
+          {
+            echo "agent=$agent"
+            echo "backend=$backend"
+            echo "dashboard=$dashboard"
+            echo "terraform=$terraform"
+          } >> "$GITHUB_OUTPUT"
+          echo "agent=$agent backend=$backend dashboard=$dashboard terraform=$terraform"
+
+  agent:
+    name: Agent (Go 1.23)
+    needs: detect
+    if: needs.detect.outputs.agent == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          # Caching is handled explicitly below so a missing go.sum during
+          # early scaffolding cannot fail the setup step.
+          cache: false
+
+      # Module downloads and the build cache dominate this job's runtime.
+      - name: Cache Go modules and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ hashFiles('agent/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ env.GO_VERSION }}-
+
+      - name: Download modules
+        run: go mod download
+
+      - name: gofmt check
+        run: |
+          set -euo pipefail
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would reformat these files; run 'make fmt'"
+            echo "$unformatted"
+            exit 1
+          fi
+          echo "gofmt: clean"
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      # The Windows agent is the shipped artefact, so prove it still
+      # cross-compiles without cgo on every push.
+      - name: Cross-compile for Windows
+        env:
+          CGO_ENABLED: "0"
+          GOOS: windows
+          GOARCH: amd64
+        run: go build -trimpath ./...
+
+      - name: go test (race detector)
+        run: go test ./... -race -count=1
+
+  backend:
+    name: Backend (Node 22)
+    needs: detect
+    if: needs.detect.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-backend-${{ hashFiles('backend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-backend-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests with coverage
+        run: |
+          set -euo pipefail
+          if [ -z "$(find . -name '*.test.ts' -not -path './node_modules/*' | head -1)" ]; then
+            echo "skipping: no *.test.ts files under backend/ yet"
+            exit 0
+          fi
+          npx vitest run --coverage
+
+  dashboard:
+    name: Dashboard (Node 22)
+    needs: detect
+    if: needs.detect.outputs.dashboard == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-dashboard-${{ hashFiles('dashboard/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-dashboard-
+
+      # Next.js reuses this across builds for a large speed-up.
+      - name: Cache Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: dashboard/.next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('dashboard/package-lock.json') }}-${{ hashFiles('dashboard/src/**') }}
+          restore-keys: |
+            ${{ runner.os }}-next-${{ hashFiles('dashboard/package-lock.json') }}-
+            ${{ runner.os }}-next-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint .
+
+      - name: Build
+        run: npx next build
+
+  terraform:
+    name: Terraform
+    needs: detect
+    if: needs.detect.outputs.terraform == 'true'
+    runs-on: ubuntu-latest
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugin-cache
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          # The wrapper rewrites stdout, which breaks `terraform fmt -check`
+          # output when it is read by a human or a later step.
+          terraform_wrapper: false
+
+      - name: Cache provider plugins
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          key: ${{ runner.os }}-tf-${{ env.TERRAFORM_VERSION }}-${{ hashFiles('infra/**/.terraform.lock.hcl') }}
+          restore-keys: |
+            ${{ runner.os }}-tf-${{ env.TERRAFORM_VERSION }}-
+
+      - name: Create plugin cache directory
+        run: mkdir -p "$TF_PLUGIN_CACHE_DIR"
+
+      - name: terraform fmt -check -recursive
+        run: terraform fmt -check -recursive infra
+
+      # Both stacks are validated: the root stack, and the remote-state
+      # bootstrap stack that has to be applied before it.
+      - name: terraform init and validate
+        run: |
+          set -euo pipefail
+          for dir in infra infra/bootstrap; do
+            if ! ls "$dir"/*.tf >/dev/null 2>&1; then
+              echo "skipping: $dir/ has no Terraform files yet"
+              continue
+            fi
+            echo "::group::validate $dir"
+            terraform -chdir="$dir" init -backend=false -input=false -no-color
+            terraform -chdir="$dir" validate -no-color
+            echo "::endgroup::"
+          done
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          # gitleaks scans commits, not just the working tree, so the whole
+          # history has to be present for the scan to mean anything.
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # gitleaks-action is free for public repositories and for personal
+          # accounts. Organisation-owned repositories need a (free) licence
+          # key stored as the GITLEAKS_LICENSE repository secret.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  compliance:
+    name: Compliance gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # These three gates encode the project's hard constraints. They run on
+      # every push regardless of which components exist, and they are not
+      # allowed to be skipped or made advisory. ALLOW_MISSING_README is
+      # deliberately not set, so a repository without a responsible-use
+      # section fails.
+      - name: No forbidden capture APIs
+        run: ./scripts/check-privacy.sh
+
+      - name: No unjustified IAM resource wildcards
+        run: ./scripts/check-iam.sh
+
+      - name: README responsible-use section is present and complete
+        run: ./scripts/check-readme.sh

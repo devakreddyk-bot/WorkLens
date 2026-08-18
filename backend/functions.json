@@ -1,0 +1,162 @@
+{
+  "$comment": [
+    "Single source of truth for the Lambda function inventory.",
+    "",
+    "scripts/bundle.ts reads this to produce artifacts/<name>.zip, and infra/ reads the",
+    "same file with jsondecode(file(...)) to declare the functions. Keeping one list means",
+    "a function cannot exist in Terraform without a bundle, or be bundled without being",
+    "deployed — the two cannot drift.",
+    "",
+    "Fields:",
+    "  name        Logical name. Becomes the zip filename and the Terraform map key.",
+    "  entry       Path to the handler module, relative to backend/.",
+    "  handler     Lambda handler string. The bundler emits index.js, so this is always",
+    "              index.<exported symbol>.",
+    "  vpc         true when the function needs database access, and therefore VPC",
+    "              attachment plus the lambda security group.",
+    "  timeout     Seconds.",
+    "  memory      MB.",
+    "  description Shown in the AWS console; keep it a single useful sentence.",
+    "",
+    "db-migrate embeds backend/migrations/*.sql via esbuild's text loader, because",
+    "RDS lives in a private subnet with no public access: a laptop cannot reach it, so the",
+    "migration runner has to ship into the VPC with the SQL inside its own bundle."
+  ],
+  "functions": [
+    {
+      "name": "admin-api",
+      "entry": "src/handlers/dashboard/admin.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 30,
+      "memory": 1024,
+      "description": "Administrative writes: employees, users, projects, config, devices, deletion requests."
+    },
+    {
+      "name": "aggregate-timesheets",
+      "entry": "src/handlers/jobs/aggregateTimesheets.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 300,
+      "memory": 1024,
+      "description": "Rolls raw activity events into per-employee daily timesheets. Scheduled and on-demand."
+    },
+    {
+      "name": "db-migrate",
+      "entry": "src/handlers/jobs/dbMigrate.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 300,
+      "memory": 1024,
+      "description": "Applies forward-only migrations from inside the VPC; RDS is not publicly reachable so this is the only path in."
+    },
+    {
+      "name": "device-authorizer",
+      "entry": "src/handlers/device/authorizer.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 10,
+      "memory": 512,
+      "description": "Verifies HMAC-signed agent requests: signature, timestamp window, nonce, revocation."
+    },
+    {
+      "name": "device-config",
+      "entry": "src/handlers/device/config.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 10,
+      "memory": 512,
+      "description": "Serves the organisation's monitoring configuration and its version to the agent."
+    },
+    {
+      "name": "enroll",
+      "entry": "src/handlers/device/enroll.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 15,
+      "memory": 512,
+      "description": "Consumes a single-use enrollment token and returns derived device credentials."
+    },
+    {
+      "name": "heartbeat",
+      "entry": "src/handlers/device/heartbeat.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 10,
+      "memory": 512,
+      "description": "Records agent liveness, version, and health counters."
+    },
+    {
+      "name": "ingest-events",
+      "entry": "src/handlers/device/ingestEvents.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 30,
+      "memory": 1024,
+      "description": "Idempotent batched activity-event ingestion with per-device quota enforcement."
+    },
+    {
+      "name": "nonce-sweeper",
+      "entry": "src/handlers/jobs/nonceSweeper.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 60,
+      "memory": 256,
+      "description": "Expires replay-protection nonces older than the accepted request timestamp window."
+    },
+    {
+      "name": "notice-ack",
+      "entry": "src/handlers/device/noticeAck.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 10,
+      "memory": 512,
+      "description": "Records the employee's acknowledgment of the first-run monitoring notice."
+    },
+    {
+      "name": "pre-token-generation",
+      "entry": "src/handlers/auth/preTokenGeneration.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 10,
+      "memory": 512,
+      "description": "Injects org, role, employee, and MFA-status claims into Cognito access tokens."
+    },
+    {
+      "name": "reporting-api",
+      "entry": "src/handlers/dashboard/reporting.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 30,
+      "memory": 1024,
+      "description": "Read APIs for the dashboard: overview, timesheets, activity, screenshot URLs, exports."
+    },
+    {
+      "name": "retention-sweeper",
+      "entry": "src/handlers/jobs/retentionSweeper.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 300,
+      "memory": 1024,
+      "description": "Deletes events, screenshots, and S3 objects past their configured retention window."
+    },
+    {
+      "name": "screenshot-complete",
+      "entry": "src/handlers/device/screenshotComplete.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 15,
+      "memory": 512,
+      "description": "Marks a screenshot upload complete after the agent's direct S3 PUT succeeds."
+    },
+    {
+      "name": "screenshot-presign",
+      "entry": "src/handlers/device/screenshotPresign.ts",
+      "handler": "index.handler",
+      "vpc": true,
+      "timeout": 15,
+      "memory": 512,
+      "description": "Issues a constrained presigned S3 PUT for one screenshot upload."
+    }
+  ]
+}

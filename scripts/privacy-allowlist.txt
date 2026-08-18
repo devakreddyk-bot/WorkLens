@@ -1,0 +1,34 @@
+# ---------------------------------------------------------------------------
+# WorkLens privacy allowlist — read this before you add a line.
+#
+# scripts/check-privacy.sh fails the build when source code references an API
+# or concept that WorkLens has committed to never using: keyboard hooks and
+# raw input, clipboard reads, webcam capture, and microphone capture. Those
+# commitments are in README.md ("Responsible & Lawful Use") and in
+# docs/PLAN.md as hard constraints, and deployers rely on them.
+#
+# An entry in this file switches that gate off for one file, or for one term
+# in one file. That is a change to the product's privacy posture, not a build
+# fix. Adding an entry REQUIRES:
+#
+#   1. A pull request that states, in the privacy-impact section of the PR
+#      template, exactly what is now referenced and why it is not a capture
+#      of employee content.
+#   2. A reviewer other than the author approving that reasoning
+#      (see the "Privacy review" step in CONTRIBUTING.md).
+#   3. A comment on the entry below giving the reason and the PR number.
+#
+# If you cannot write a convincing comment, the code is the problem, not
+# this file. Deleting the offending code is always the preferred fix.
+#
+# Format — one entry per line, paths relative to the repository root:
+#
+#   path/to/file.go                 allow every forbidden term in this file
+#   path/to/file.go:GetClipboardData  allow only this term in this file
+#
+# Blank lines and lines beginning with # are ignored. Terms are matched
+# case-insensitively, exactly as the checker matches them.
+#
+# There are deliberately no entries. The build passes with this file empty,
+# and that is the state to keep it in.
+# ---------------------------------------------------------------------------

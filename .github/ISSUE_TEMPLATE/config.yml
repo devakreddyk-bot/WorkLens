@@ -1,0 +1,28 @@
+# Issue template chooser configuration.
+#
+# Blank issues are disabled so that reports arrive with the context needed to
+# act on them. The links below route the two things that should never become a
+# public issue: security vulnerabilities, and questions about whether
+# monitoring is appropriate in a given deployment.
+blank_issues_enabled: false
+
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/worklens/worklens/security/advisories/new
+    about: >-
+      Do not open a public issue for a vulnerability. Use a private security
+      advisory instead. See SECURITY.md for scope and response times.
+
+  - name: Question about responsible or lawful use
+    url: https://github.com/worklens/worklens/discussions
+    about: >-
+      Whether and how employee monitoring may be deployed, consent, notice,
+      retention, or DPDP Act obligations. Start a discussion — these are not
+      bugs, and they are not security reports. Read the "Responsible & Lawful
+      Use" section of the README first.
+
+  - name: Deployment or configuration help
+    url: https://github.com/worklens/worklens/discussions
+    about: >-
+      Terraform apply failures, agent enrollment problems, or configuration
+      questions. Run `worklens-agentctl doctor` first and include its output.

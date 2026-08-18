@@ -1,0 +1,195 @@
+# WorkLens — Terraform variable reference
+#
+# Copy to terraform.tfvars and edit. terraform.tfvars is gitignored;
+# terraform.tfvars.example is committed. NO REAL SECRET EVER GOES IN EITHER: the only
+# genuine secret in this stack is the device root key, which Terraform generates and
+# stores in Secrets Manager, and the database password, which RDS manages itself.
+#
+# Every value below has a working default, so `terraform apply` with no tfvars at all
+# produces a functioning stack. The three worth setting before you call it production
+# are marked SET THIS.
+
+# ---------------------------------------------------------------------------
+# Placement and naming
+# ---------------------------------------------------------------------------
+
+# ap-south-1 (Mumbai) is the default because India's DPDP Act is the target deployment
+# jurisdiction, and employee data staying in-country is the easiest position to defend.
+aws_region  = "ap-south-1"
+
+project     = "worklens"
+
+# Part of every resource name, so prod and staging can share one AWS account.
+environment = "prod"
+
+# Merged into the tag set on every resource. Useful for cost allocation.
+# extra_tags = {
+#   CostCentre = "operations"
+#   Owner      = "it@example.com"
+# }
+
+# ---------------------------------------------------------------------------
+# Dashboard origins — SET THIS
+# ---------------------------------------------------------------------------
+# Where the dashboard is served from. Drives the API's CORS allowlist, the S3 CORS rule
+# for presigned reads, and the Cognito callback/logout URLs.
+#
+# Leaving http://localhost:3000 in a production deployment means a permitted origin an
+# attacker can reach by getting a victim to run something locally. Remove it once the
+# dashboard has a real hostname.
+
+dashboard_origins = ["http://localhost:3000"]
+# dashboard_origins = ["https://worklens.example.com"]
+
+# ---------------------------------------------------------------------------
+# Alerting — SET THIS
+# ---------------------------------------------------------------------------
+# Unset means alarms publish to a topic nobody is subscribed to: a failed nightly
+# aggregation would simply not produce timesheets, and nothing would say so.
+# AWS sends a confirmation email that has to be accepted manually.
+
+# alarm_email = "it@example.com"
+
+# ---------------------------------------------------------------------------
+# Database
+# ---------------------------------------------------------------------------
+
+# db.t4g.micro carries a single company to a few hundred devices: ingest is one batched
+# write per device per minute, not a per-request workload. Scale the instance class
+# before reaching for RDS Proxy — see docs/OPERATIONS.md.
+db_instance_class        = "db.t4g.micro"
+
+db_allocated_storage     = 20
+db_max_allocated_storage = 100
+
+# Off by default: it roughly doubles the database bill, and this workload tolerates a
+# few minutes of write unavailability because agents buffer locally and retry, so a
+# failover costs no data. Turn it on if the dashboard must stay reachable through an AZ
+# failure.
+db_multi_az = false
+
+db_backup_retention_days = 7
+
+# Guards against `terraform destroy` taking the database with it. Turning this off is a
+# deliberate act, which is the point.
+db_deletion_protection = true
+
+# ---------------------------------------------------------------------------
+# Retention
+# ---------------------------------------------------------------------------
+
+# S3 lifecycle expiry for screenshots. This is a BACKSTOP, not the policy: the
+# authoritative window is monitoring_config.retention_days_screenshots in the database,
+# enforced by the retention sweeper. Keep this at or above the longest window any org
+# will configure, or the lifecycle rule deletes data the application still considers
+# live.
+screenshot_retention_days = 90
+
+cloudtrail_retention_days = 365
+
+# CloudWatch retention for Lambda, API Gateway and WAF logs. Short on purpose:
+# application logs can contain window titles, which are personal data. Long enough to
+# debug an incident, not long enough to become a second copy of the activity database.
+log_retention_days = 30
+
+# ---------------------------------------------------------------------------
+# API and WAF
+# ---------------------------------------------------------------------------
+
+api_stage_name           = "v1"
+api_throttle_rate_limit  = 200
+api_throttle_burst_limit = 400
+
+# Optional custom domain. Both must be set together, and the certificate must be a
+# REGIONAL certificate in aws_region (not us-east-1 — that is for CloudFront).
+# api_custom_domain_name  = "api.worklens.example.com"
+# api_acm_certificate_arn = "arn:aws:acm:ap-south-1:123456789012:certificate/REPLACE_ME"
+
+# MUST stay false in any real deployment. API Gateway data tracing logs full request and
+# response bodies, and those bodies contain window titles and page titles — enabling it
+# copies personal data into CloudWatch under a different retention policy than the
+# database. Minutes in staging, never longer.
+api_data_trace_enabled = false
+
+# Generous, because a whole office can share one NAT address: 50 devices uploading from
+# one IP is normal traffic, not an attack.
+waf_rate_limit_per_five_minutes = 2000
+
+# Tighter, because enrollment is the one path with no HMAC credential yet — the agent
+# has no secret at that point. Its only other protection is token single-use.
+waf_enroll_rate_limit_per_five_minutes = 100
+
+# Put the AWS managed rule sets in count-only mode. Worth doing for the first week after
+# go-live to see what *would* have been blocked before it blocks a real agent.
+waf_count_only = false
+
+# ---------------------------------------------------------------------------
+# Lambda
+# ---------------------------------------------------------------------------
+
+# Produced by `make backend-build`, which reads backend/functions.json — the same
+# inventory the lambda module declares from, so build and deploy cannot drift.
+lambda_artifact_dir = "../backend/artifacts"
+
+# A database protection, not a cost control. Each warm container holds a Postgres
+# connection and db.t4g.micro allows roughly 85, so capping ingest means a fleet-wide
+# retry storm queues at Lambda instead of exhausting connections and taking the
+# dashboard down with it.
+ingest_reserved_concurrency = 20
+
+lambda_log_level = "info"
+
+# Keep true. RDS has no public access, so this in-VPC function is the only way to apply
+# migrations without standing up a bastion host.
+create_db_migrate_function = true
+
+# Accepted clock skew for HMAC-signed agent requests. Must stay well below the nonce
+# sweep retention interval, or a replay becomes possible at the window boundary.
+hmac_timestamp_skew_seconds = 300
+
+# ---------------------------------------------------------------------------
+# Scheduling
+# ---------------------------------------------------------------------------
+
+# Set false for the very first apply: until migrations have run and a device has
+# enrolled, an aggregation run against an empty schema is log noise rather than signal.
+enable_schedules = true
+
+# EventBridge cron is always UTC. 20:45 UTC is 02:15 IST — after the end of an Indian
+# working day, before anyone opens a dashboard. Per-employee day boundaries are computed
+# in each employee's own timezone inside the job, so this only sets when the work runs.
+aggregation_schedule_expression = "cron(45 20 * * ? *)"
+
+# More than one day on purpose: an agent offline overnight uploads yesterday's events
+# today, and that late data has to land in the right day's timesheet. Aggregation is an
+# idempotent upsert, so recomputing a settled day costs nothing but a little CPU.
+aggregation_lookback_days = 3
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+
+# Must be unique across the region. Unset derives one from the name prefix plus a random
+# suffix, which is what lets a first apply succeed without guessing an unused name.
+# cognito_domain_prefix = "worklens-example"
+
+# AUDIT records risk signals (impossible travel, credential stuffing) without blocking;
+# ENFORCED acts on them. AUDIT by default: this pool holds accounts that can read every
+# employee's activity, so the signals are worth having, while ENFORCED can lock out an
+# owner who is simply travelling.
+cognito_advanced_security_mode = "AUDIT"
+
+# ---------------------------------------------------------------------------
+# Auditing
+# ---------------------------------------------------------------------------
+
+# Logs every object-level read and write on the screenshot bucket to CloudTrail. Off by
+# default: data events are billed per event and the application audit_log already records
+# who viewed which screenshot. Turn it on where an independent, application-external
+# record of screenshot access is required.
+enable_cloudtrail_s3_data_events = false
+
+# VPC flow logs. On by default — this VPC carries employee activity data, and being able
+# to answer "did anything talk to the database that should not have" after the fact is
+# worth about a dollar a month.
+enable_vpc_flow_logs = true

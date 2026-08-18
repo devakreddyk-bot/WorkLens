@@ -1,0 +1,169 @@
+# ---------------------------------------------------------------------------
+# WorkLens — repository ignore rules
+#
+# Security note: this file is the first line of defence against committing
+# credentials or personal data. gitleaks in CI is the backstop, not the
+# primary control. If you add a new tool or language to this repo, add its
+# artefact and secret patterns here in the same commit.
+# ---------------------------------------------------------------------------
+
+# --- Go (agent/) -----------------------------------------------------------
+bin/
+vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+# Go build and test caches, if ever redirected into the tree
+.gocache/
+.gomodcache/
+
+# --- Node / TypeScript (backend/, dashboard/) ------------------------------
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+dist/
+build/
+out/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Next.js (dashboard/) --------------------------------------------------
+.next/
+.vercel/
+next-env.d.ts
+
+# --- Terraform (infra/) ----------------------------------------------------
+.terraform/
+.terraform.tfstate.lock.info
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+# Variable files hold account IDs, ARNs and CIDRs — never commit them.
+# The *.tfvars.example templates ARE committed.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+# NOTE: .terraform.lock.hcl is deliberately NOT ignored. Provider lock files
+# are committed so every developer and CI run resolves identical providers.
+
+# --- Environment files -----------------------------------------------------
+# .env.example files ARE committed (documented placeholders, no real values).
+.env
+.env.*
+!.env.example
+
+# --- SQLite (agent local buffer, local test databases) ---------------------
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# --- Secrets and key material ----------------------------------------------
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.crt
+*.cer
+*.der
+credentials.json
+credentials
+.aws/
+secrets.json
+secrets.yaml
+secrets.yml
+*.secret
+id_rsa
+id_ed25519
+*.gpg
+*.asc
+
+# --- Build artefacts -------------------------------------------------------
+# esbuild bundles + Lambda deployment zips produced by `make backend-build`
+backend/artifacts/
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# --- Local agent runtime data (never belongs in the repo) ------------------
+# Captured screenshots and queued events are personal data by definition.
+queue/
+screenshots/
+*.png.tmp
+
+# --- Logs and temporary files ----------------------------------------------
+*.log
+!scripts/*.log.example
+tmp/
+.tmp/
+.cache/
+
+# --- macOS -----------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+Icon?
+
+# --- Windows ---------------------------------------------------------------
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# --- Linux -----------------------------------------------------------------
+.directory
+.fuse_hidden*
+.nfs*
+
+# --- Editors and IDEs ------------------------------------------------------
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.swp
+*.swo
+*~
+.\#*
+\#*\#
+.project
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# --- Python (only used by ad-hoc tooling scripts) --------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
