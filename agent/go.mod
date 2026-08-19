@@ -8,7 +8,10 @@ module github.com/worklens/worklens/agent
 // language feature, and pinning the floor low keeps the build reproducible on an LTS image.
 go 1.23
 
-require github.com/kbinani/screenshot v0.0.0-20250624051815-089614a94018
+require (
+	fyne.io/systray v1.11.0
+	github.com/kbinani/screenshot v0.0.0-20250624051815-089614a94018
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
