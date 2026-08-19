@@ -1,7 +1,12 @@
 # RESUME — WorkLens build state
 
-**Written:** 2026-08-19 · **Repo:** `/Users/devakrkunthuri/worklens` (git, branch `main`)
-**Phases complete:** 0, 1, 2, 3 and 4. **Phase 5 (the dashboard) is next.**
+**Written:** 2026-08-20 · **Repo:** `/Users/devakrkunthuri/worklens` (git, branch `main`)
+**Phases complete:** 0, 1, 2, 3, 4 and 5. **Phase 6 (hardening) is next**, then Phase 7 (docs
+and release).
+
+**State at this checkpoint:** 427 backend tests and 13 agent packages pass, both Windows
+binaries build, the dashboard's `tsc` / `eslint --max-warnings 0` / `next build` are clean,
+`terraform validate` is clean, and all six compliance gates pass. Nothing is half-written.
 
 This file is refreshed at every checkpoint. It assumes the reader has **zero memory** of
 the session that produced it.
@@ -85,48 +90,38 @@ request for nothing. Already removed from `backend/functions.json`,
 ---
 
 ## 3. Current repo tree
-
 ```
 worklens/
   README.md  LICENSE  CONTRIBUTING.md  CODE_OF_CONDUCT.md  SECURITY.md
   CHANGELOG.md  Makefile  .gitignore  .editorconfig  .gitattributes
-  .github/workflows/ci.yml  .github/dependabot.yml  .github/PULL_REQUEST_TEMPLATE.md
-  .github/ISSUE_TEMPLATE/{bug_report.md,feature_request.md,config.yml}
+  .github/workflows/ci.yml  .github/dependabot.yml  + templates
 
-  scripts/check-privacy.sh      privacy gate (executable, passing)
-  scripts/check-iam.sh          IAM wildcard gate (executable, passing)
-  scripts/check-readme.sh       responsible-use gate (executable, passing)
+  scripts/check-privacy.sh      forbidden capture APIs
+  scripts/check-iam.sh          unjustified IAM wildcards
+  scripts/check-readme.sh       responsible-use section present and complete
+  scripts/check-functions.sh    functions.json vs the Terraform catalogue
+  scripts/check-migrations.sh   every migration bundled into db-migrate
+  scripts/check-routes.sh       dashboard calls vs the backend route tables
   scripts/privacy-allowlist.txt (empty by design)
 
-  docs/MASTER_BUILD_PROMPT.md   the recovered requirements
-  docs/PLAN.md                  Phase 0 plan — the design authority
-  docs/ARCHITECTURE.md          runtime behaviour, request paths, failure table
-  docs/RESUME.md                this file
+  contracts/signature-vectors.json   8 HMAC vectors, asserted from Go AND TypeScript
 
-  backend/
-    package.json tsconfig.json eslint.config.js vitest.config.ts .env.example
-    functions.json              14 Lambdas — SHARED with infra/, do not let it drift
-    migrations/0001_init.sql    22 tables, the whole schema
-    migrations/0002_org_bootstrap.sql   category template + wl_seed_org_defaults()
-    migrations/0003_app_role.sql        worklens_app / worklens_migrator + grants
-    migrations/README.md
-    scripts/migrate.ts          checksum-enforcing forward-only runner
-    scripts/bundle.ts           esbuild + deterministic zip writer
-    src/shared/{config,errors,logger,db,signature,deviceSecret,http}.ts
-    src/middleware/deviceAuth.ts
-    test/setup.ts
-    test/shared/{signature,deviceSecret,logger}.test.ts   102 tests, passing
+  docs/  MASTER_BUILD_PROMPT.md  PLAN.md  ARCHITECTURE.md  AGENT.md
+         SECURITY.md  RESPONSIBLE_USE.md  RESUME.md (this file)
 
-  infra/
-    versions.tf main.tf variables.tf outputs.tf backend.tf terraform.tfvars.example
-    bootstrap/{versions,variables,main,outputs}.tf        remote-state bucket + lock table
-    modules/network database storage auth lambda lambda/modules/function
-            api waf scheduling observability alarms       (each main/variables/outputs.tf)
+  agent/         Go, Windows. cmd/{worklens-agent,worklens-agentctl}
+                 internal/{capture,config,logging,notice,platform,privacy,
+                           screenshot,signing,store,supervisor,tray,uploader}
+                 13 test-reporting packages, all passing under -race
+  backend/       TypeScript. migrations/ (3), src/{shared,middleware,repositories,
+                 schemas,handlers,aggregation}, 17 test files / 427 tests
+  dashboard/     Next.js 15 App Router. 19 routes, src/{app,components,lib}
+  infra/         Terraform. bootstrap/ + 10 modules (plus the nested
+                 lambda/modules/function), each with its own README
+  bin/           built agent binaries (gitignored)
 ```
 
-Not yet created: `agent/`, `dashboard/`, `backend/src/repositories/`,
-`backend/src/schemas/`, `backend/src/handlers/`, `backend/src/aggregation/`,
-and `docs/{API,AGENT,DEPLOYMENT,CONFIGURATION,SECURITY,RESPONSIBLE_USE,OPERATIONS}.md`.
+Still to be written: `docs/{API,DEPLOYMENT,CONFIGURATION,OPERATIONS}.md` (Phase 7).
 
 ---
 
@@ -216,84 +211,100 @@ Also worth knowing: `Date.parse('2026-02-30T00:00:00Z')` does **not** return NaN
 rolls forward to 2 March, which would silently move an event into a different timesheet
 day. `src/schemas/common.ts` validates the day against the month's real length.
 
+### Phase 3 — complete, committed as `d219049`…`337d062`
+
+The Windows agent. 13 packages, `go test ./... -race` clean, both binaries cross-compile
+with `CGO_ENABLED=0`.
+
+- `internal/signing` matched all 8 shared contract vectors on its first run. The guard was
+  then proved to bite by mutating the Go implementation and watching the vectors fail.
+- `internal/privacy/rules.go` applies **every** privacy rule locally, before anything is
+  queued for upload: work-hours windows, excluded apps, excluded URL patterns, blur. An
+  empty `WorkDays` fails closed (collects nothing) rather than open. `isoWeekday` is the
+  only place Go's and ISO's weekday conventions meet, deliberately isolated.
+- `internal/store` is a claim protocol — `AppendEvent` / `ClaimBatch` / `DeleteBatch` /
+  `ReleaseBatch` / `Recover` — so a crash mid-upload cannot lose or duplicate a batch.
+- `internal/uploader/pinning.go` pins to the four Amazon **root** CAs, not a leaf.
+- `internal/tray` is the visibility guarantee: `Require()` returns a controller *alongside*
+  any error, never instead of one, so no code path can start collecting with no tray icon.
+- `cmd/worklens-agentctl/install.go` writes the logon Scheduled Task XML (D5: a session-0
+  service cannot see the interactive desktop).
+
+### Phase 4 — complete, committed as `d5875e1`…`e577373`
+
+Aggregation and the dashboard/admin APIs.
+
+- `src/aggregation/rollup.ts` is a **pure** function — no clock, no database — which is what
+  makes DST, 23- and 25-hour days, and midnight-straddling sessions testable.
+- `src/aggregation/zone.ts` does timezone arithmetic through `Intl` with no library;
+  `startOfLocalDay` is two-pass because the first pass can land on the wrong side of a DST
+  transition.
+- `EVENT_LOOKBEHIND_MS` is 61 minutes so an event straddling a day boundary is not missed,
+  while only days inside the requested range are written.
+- `retentionSweeper` deletes S3 objects **before** rows, so a failure leaves an orphan row
+  (recoverable) rather than an orphan object (invisible, and still holding an image).
+- A user-supplied URL rule pattern took **95 seconds** on a catastrophic backtrack. JS
+  cannot interrupt a running regex, so a time budget was near-useless; `NESTED_QUANTIFIER_RE`
+  now refuses dangerous patterns at compile time. 95s → 24ms.
+
+### Phase 5 — complete, committed as `5656421`, `3d4e56f`, `640a244` and `32945d8`
+
+The dashboard: 19 routes, Cognito authorization-code + PKCE, `httpOnly` cookie sessions,
+server-side admin MFA gate (D7), and `docs/{SECURITY,RESPONSIBLE_USE}.md`.
+
+- The design is "a register, not a console": ledger-green banding, flat (`* { border-radius:
+  0 }`), no dark mode. `src/app/globals.css` carries the full rationale.
+- `src/components/DayBand.tsx` is the signature element — a real 24-hour axis with the gaps
+  left as paper, because a percentage hides *when* somebody worked. It uses `Intl`, not
+  `getHours()`, so a Melbourne manager sees an Indian employee's 09:00 at 09:00.
+- **`/me` renders the same `EmployeeRecord` with the same props as `/employees/[id]`.** Not a
+  reduced view. Verified, not assumed.
+- **A screenshot's presigned URL is fetched on click**, one image at a time. Issuing a URL
+  writes an access to the audit log, so an unviewed image must not appear there as viewed —
+  and the URLs expire in 300s, so presigning a gallery up front breaks it anyway.
+- `src/lib/session.ts` names its decoder `decodeUnverifiedPayload` to make the omission
+  unmissable: the cookie payload is read without verification because the **server** is what
+  authorizes every request. The UI reflects the server's decision, it does not make one.
+
 ---
 
 ## 5. What is IN PROGRESS
+**Nothing.** No half-written file, no background agent running, no failing test.
 
-**Nothing is half-written.** Both background agents that were running at the previous
-checkpoint have finished and their work is committed and independently verified:
+The last piece of delegated work (the dashboard pages) was audited before it was committed
+rather than taken on trust, which is how the `api.ts` defect in §7 was found.
 
-- All 11 Terraform module READMEs are present.
-- The device API is complete — see §4. I re-ran `tsc`, `eslint --max-warnings 0` and
-  `vitest` myself, audited every repository query for interpolation and `org_id` scoping,
-  and confirmed the derived device secret is returned but never persisted.
-
-**Phase 2 is complete.** 232 tests pass, `tsc` and `eslint --max-warnings 0` are clean,
-five compliance gates pass, and `terraform validate` is clean. The two remaining handlers
-from the last checkpoint are done:
-
-- `src/shared/migrations/runner.ts` — the migration engine, now shared by the CLI and the
-  Lambda. Verified against a live PostgreSQL 16: applies from scratch, reports up-to-date on
-  re-run, `--status` prints the ledger.
-- `src/handlers/jobs/dbMigrate.ts` — the only route migrations have into the deployed
-  database. Carries the SQL embedded; two guards stop a silently-skipped migration
-  (`assertAllMigrationsBundled` and `scripts/check-migrations.sh`, both tested by trying to
-  break them).
-- `src/handlers/auth/preTokenGeneration.ts` — resolves org/role/employee once at sign-in and
-  emits `wl:mfa` for the D7 admin gate. Fails closed except for an unprovisioned account.
-
-**A deployment-breaking gap was found and fixed while doing this.** `src/shared/db.ts` runs
-`verify-full` and fails closed without the RDS trust store, but nothing put the trust store
-in the deployment package, and `.gitignore`'s blanket `*.pem` meant it could not be
-committed. Every in-VPC Lambda would have thrown at TLS setup on its first invocation. The
-bundle now lives at `backend/assets/rds-ca-global-bundle.pem` (a published CA bundle, not a
-secret), `.gitignore` carries an explicit exception, and `bundle.ts` copies it into every
-zip — confirmed by unzipping an artifact.
+---
 
 ## 6. What is NEXT, in order
+**Phase 6 — hardening.** The security-checklist pass is done and written up in
+`docs/SECURITY.md`, including, deliberately, what is *not* defended (AWS itself, a
+compromised laptop, a malicious deployer, traffic analysis) and what is *unverified*
+(nothing has been deployed; IAM has never been exercised; the WAF has never seen traffic;
+the Windows syscall layer has never run on Windows; there has been no pen test). Remaining:
 
-**Finish Phase 2.**
-1. Confirm or build the repositories, schemas and device handlers described in §5.
-2. `src/handlers/jobs/dbMigrate.ts` — the in-VPC migration Lambda. RDS has no public
-   access, so this is the *only* way migrations reach the deployed database. It imports the
-   `.sql` files as text (the bundler already sets `loader: { '.sql': 'text' }`); factor the
-   ledger/checksum logic out of `scripts/migrate.ts` into `src/shared/migrations/` so both
-   callers share one implementation.
-3. `src/handlers/auth/preTokenGeneration.ts` — reads org, role and `employee_id` from
-   `users`, calls `AdminGetUser` for MFA status, injects `wl:*` claims (D7). It is in the
-   VPC and reaches Cognito through the interface endpoint.
-4. `make backend-build` must succeed — it fails today because handler entry files listed in
-   `functions.json` do not all exist yet. That is deliberate strictness, not a bug.
+1. Fill the test gaps. The thinnest areas are the dashboard's server actions and
+   `src/lib/dates.ts`; `internal/capture` is tested at the boundary but its Win32 layer
+   cannot be tested off-Windows and should be stated as such rather than mocked into a
+   false green.
+2. Confirm CI is green on all four toolchains (Go, backend TS, dashboard TS, Terraform) —
+   it has never run on a pushed branch, only locally via `make ci`.
 
-**Phase 3 — Agent (Windows).** The largest remaining piece. `docs/PLAN.md` §5 has the
-package layout and §9 the ordered tasks. Non-obvious points that will cost a day each if
-missed:
-- Startup order is a privacy control: config → notice gate → tray (exit non-zero if the
-  tray cannot be created) → capture goroutines. Capture must not start before the notice
-  is acknowledged.
-- The privacy filter sits between capture and the SQLite buffer, so excluded data is never
-  written to disk. Not between buffer and upload.
-- An idle sample must drop app and title before storing, or the server's CHECK constraint
-  rejects the batch.
-- Install as a **logon Scheduled Task**, not a service (D5).
-- Write the signing implementation against `backend/test/shared/signature.test.ts`'s
-  construction, and add a shared fixture file so both languages are pinned to the same
-  vectors. This contract silently breaking is the most likely integration failure.
+**Phase 7 — documentation and release.** `README.md` in full, then
+`docs/{DEPLOYMENT,CONFIGURATION,OPERATIONS,API}.md`, then tag `v0.1.0`. This is the
+author's first public repository, so the responsible-use posture and the honesty of
+`docs/SECURITY.md` matter as much as the code.
 
-**Phase 4** — `src/aggregation/rollup.ts` as a *pure* function (timezones, DST, sessions
-spanning midnight, all-idle days, project-rule precedence), plus `runner.ts`, the reporting
-handlers, CSV export, and the retention and nonce sweepers.
-
-**Phase 5** — the dashboard: Cognito auth, RBAC, the fourteen routes in `docs/PLAN.md` §7,
-CSV and PDF export. PDF renders client-side with `@react-pdf/renderer`, deliberately not in
-Lambda.
-
-**Phase 6** — walk §9 line by line recording evidence in `docs/SECURITY.md`; fill test gaps;
-CI green on all four toolchains.
-
-**Phase 7** — full README, `docs/RESPONSIBLE_USE.md` (what is and is not collected, an
-employee notice template, DPDP Act obligations), `DEPLOYMENT.md`, `CONFIGURATION.md`,
-`OPERATIONS.md`, `API.md`, `AGENT.md`; tag `v0.1.0`.
+**Known follow-ups, none blocking:**
+- CSV export returns a base64 JSON envelope because `backend/src/shared/http.ts` serialises
+  every body with `JSON.stringify`. A real `text/csv` response needs a raw-response branch
+  in its `toProxyResult`. The client reassembles the bytes so the BOM and CRLF endings stay
+  exact; it is a wart, not a bug.
+- No rule-preview endpoint: an admin cannot see what a project rule would match before
+  saving it.
+- No PDF export.
+- `final_snapshot_identifier` in `modules/database` is a fixed name, so a second teardown of
+  the same environment collides with the first one's snapshot.
 
 ---
 
@@ -356,6 +367,25 @@ true).
 uploads yesterday's events today and that late data must land in the right day's timesheet.
 Aggregation is an idempotent upsert, so recomputing a settled day is free.
 
+**The dashboard hand-declares its API types, and `scripts/check-routes.sh` is what keeps
+that honest.** `dashboard/src/lib/api.ts` does not import the backend's Zod schemas, because
+the two tiers deploy separately and a dashboard build should not be coupled to a backend
+source tree it may not be released alongside. That reasoning stands. What it cost: the
+declarations are a copy, and the first version of them was written from `docs/PLAN.md`
+instead of from the handlers, so it called `/timesheets/team` and a `/breakdown` sub-route,
+neither of which exists (the team register is a projection of `/overview`; the breakdown is
+an `include_breakdown` flag). `tsc` cannot catch this — each tier is internally consistent,
+which is precisely what the separation buys — so the gate compares called paths and methods
+against the backend's route tables. It does **not** check field names. If you change a shape
+in `api.ts`, read the handler.
+
+Two lessons worth keeping. First: when work is delegated, audit it before trusting it — this
+defect was found because the delegated agent's claim that it had corrected existing code was
+checked rather than accepted, and the claim was right. Second: a gate is not trustworthy
+until it has been proved to bite. This one's first run reported a `POST /devices` that does
+not exist, because it looked for the HTTP method in a fixed window after the path and picked
+up the *next* helper's `POST`. A gate that cries wolf gets switched off.
+
 ### Defects found and fixed after the Phase 2 commit
 
 A documentation pass over the Terraform surfaced seven real problems. Five are fixed;
@@ -411,40 +441,40 @@ Manager; the database password is managed by RDS and never enters Terraform stat
 ---
 
 ## 9. The exact next instruction
-
-> Begin Phase 5 of the WorkLens build in `/Users/devakrkunthuri/worklens`: the Next.js dashboard.
+> Continue the WorkLens build in `/Users/devakrkunthuri/worklens` at **Phase 6
+> (hardening)**, then Phase 7. Phases 0–5 are complete and committed.
 >
-> Read `docs/RESUME.md`, then `docs/PLAN.md` §7 (the fourteen-route page map) and §4 (the API
-> surface the dashboard consumes), then `backend/src/middleware/cognitoAuth.ts` — its `POLICY`
-> table and `Principal` shape define what each role may see, and the UI must reflect the server's
-> decision rather than making its own.
+> Read `docs/RESUME.md` first, then `docs/SECURITY.md` — its "what is unverified" section is
+> the honest inventory of what Phase 6 has to either close or state plainly.
 >
-> Confirm the baseline first:
+> Confirm the baseline before changing anything:
 > ```
-> cd backend && npx vitest run          # 427 tests
-> cd ../agent && go test ./... -race    # 260 tests
-> make check-privacy check-iam check-readme check-functions check-migrations
+> cd backend && npx vitest run                    # 427 tests, 17 files
+> cd ../agent && go test ./... -race              # 13 packages
+> cd ../dashboard && npx tsc --noEmit && npx eslint . --max-warnings 0 && npm run build
+> cd .. && make check-privacy check-iam check-readme check-functions check-migrations check-routes
 > ```
 >
-> Build `dashboard/` as Next.js 15 App Router + TypeScript + Tailwind v4 + Recharts, per
-> `docs/PLAN.md` §7. Things that will cost time if missed:
+> Phase 6, in order:
 >
-> 1. **The API client should reuse the backend's Zod schemas** (`backend/src/schemas/`) rather than
->    redeclaring the response shapes. That shared contract is deviation D1's whole justification.
-> 2. **`/mfa-required` is a real route, not a modal.** An `owner` or `manager` without a second
->    factor gets `MFA_REQUIRED` from every admin route, and needs a reachable page to enrol — which
->    is why `/v1/me` is deliberately not MFA-gated.
-> 3. **The employee self-view is a trust feature, not a lesser view.** `/me` shows an employee
->    exactly what their manager sees, in the same detail. Build it from the same components.
-> 4. **Screenshot URLs expire in 300 seconds.** Fetch them on demand per image; a gallery that
->    presigns everything up front will show broken images after five minutes.
-> 5. **The settings page must state each setting's privacy consequence inline**, and diff-confirm
->    before saving. Turning on screenshots is not a toggle like any other.
-> 6. **CSV export currently returns a base64 JSON envelope**, because `backend/src/shared/http.ts`
->    JSON-stringifies every body. Either decode it client-side, or add a raw-response branch to
->    `toProxyResult` first — the CSV encoder itself already streams over keyset pages.
+> 1. **Fill the test gaps**, thinnest first: the dashboard's server actions
+>    (`src/lib/actions.ts`) and `src/lib/dates.ts`. Prefer tests that would have caught a real
+>    defect over tests that raise a coverage number.
+> 2. **Do not mock the agent's Win32 layer into a false green.** It cannot run off-Windows.
+>    State that as a known limit — `docs/AGENT.md` §10 already does — rather than pretending.
+> 3. **Get CI green on a pushed branch.** `make ci` passes locally but the workflow has never
+>    actually run; expect the usual first-run problems (toolchain versions, working
+>    directories, cache keys).
 >
-> Load the `frontend-design` skill before building UI: the plan calls for something that reads as a
-> deliberate product rather than a component-library default.
+> Then Phase 7: `README.md` in full, `docs/{DEPLOYMENT,CONFIGURATION,OPERATIONS,API}.md`,
+> `CHANGELOG.md`, tag `v0.1.0`.
 >
-> Verify with `cd dashboard && npx tsc --noEmit && npx eslint . && npm run build`.
+> Standing constraints that outrank convenience, from `docs/MASTER_BUILD_PROMPT.md`:
+> **no keystroke content, no password, webcam, microphone or clipboard capture; the agent stays
+> visible (tray icon, first-run notice) and cannot be made covert; privacy rules are applied on
+> the device before upload; no secret in the repo, in a comment, or in a chat message.** No
+> placeholders or `TODO`s in shipped code — a value the deployer must supply belongs in
+> `.env.example` with a comment saying so.
+>
+> If a delegated agent reports that it changed existing code, verify the claim before
+> accepting it, and say plainly in the commit message when the pre-existing code was wrong.
