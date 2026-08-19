@@ -1,0 +1,196 @@
+@import 'tailwindcss';
+
+/*
+ * WorkLens design tokens.
+ *
+ * # The direction, and why it is not a dashboard
+ *
+ * Every employee-monitoring product looks like a security operations centre: dark, dense,
+ * productivity scores, red alerts. That aesthetic is wrong for this one. WorkLens exists to produce a
+ * timesheet an owner can defend and an employee can trust, so the interface is built to read as a
+ * REGISTER — a document of record, something you could print, sign and file — rather than a console
+ * somebody watches people through.
+ *
+ * The consequences are deliberate and they are load-bearing:
+ *
+ *   - No dark mode. A register is on paper. Committing to one theme means the ledger banding, the
+ *     hairlines and the ink weights can be tuned precisely instead of surviving two palettes.
+ *   - No shadows, no rounded corners, no gradients. Depth implies a stack of floating panels; a
+ *     document is flat. Every division is a hairline rule, as it would be on a form.
+ *   - Alternating row tint in ledger green, from real accounting paper. It is not decoration: it
+ *     aids scanning a wide row, which is exactly the task on the team view.
+ *
+ * # Colour
+ *
+ * The palette avoids the two shapes generative design falls into — warm cream with a high-contrast
+ * serif, and near-black with an acid accent. This is accounting stock: a cool grey-green paper, pine
+ * ink, sage for absence.
+ */
+@theme {
+  /* --- paper and ink ------------------------------------------------------ */
+
+  /* Cooler and greyer than the conventional cream, so the ledger green reads as green rather than
+     as a stain on beige. */
+  --color-paper: #f7f8f5;
+  /* The alternating band on accounting paper. */
+  --color-band: #edf1e9;
+  /* A raised surface is still paper — a slip laid on the page, distinguished by a rule, not a shadow. */
+  --color-slip: #fdfdfc;
+
+  /* Never pure black: a green undertone keeps the text in the same family as the ink used for data. */
+  --color-ink: #1a1f1c;
+  --color-ink-soft: #5a6560;
+  --color-ink-faint: #8b968f;
+
+  --color-rule: #c9d2c8;
+  --color-rule-strong: #9aa79c;
+
+  /* --- the data palette --------------------------------------------------- */
+
+  /* Recorded work. Deep pine: serious, legible at hairline widths, and pointedly not a "good/green"
+     signal — this is ink, not a score. */
+  --color-active: #2e5d4b;
+  --color-active-soft: #4d7f6a;
+
+  /* Idle time. Present and visible, because idle minutes are part of an honest day, not a failure. */
+  --color-idle: #b8c4bc;
+
+  /* Reserved. Only for a revoked device, a missing second factor, a retention warning, or a
+     destructive confirmation. Nothing routine is ever this colour, so when it appears it means
+     something. */
+  --color-flag: #a6462e;
+  --color-flag-soft: #f0e2dd;
+
+  /* Screenshots are the most sensitive artefact in the product, so anything about them carries its
+     own mark rather than borrowing the data palette. */
+  --color-lens: #6b5840;
+
+  /* --- type -------------------------------------------------------------- */
+
+  /* Three faces, each with one job, all drawn from the artefact:
+     display  — Archivo, used uppercase and tracked out for column labels, the way a form labels its
+                columns. Also carries headings.
+     body     — IBM Plex Sans, for prose.
+     figures  — IBM Plex Mono with tabular figures, for every duration, time and date. Columns of
+                times have to align; this is functional, not a stylistic nod to code. */
+  --font-display: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  /* --- rhythm ------------------------------------------------------------ */
+
+  /* A single 4px grid. A register's discipline is its spacing, and a flat design has nothing else to
+     hide behind. */
+  --spacing: 0.25rem;
+}
+
+/* --------------------------------------------------------------------------
+ * Base
+ * -------------------------------------------------------------------------- */
+
+@layer base {
+  * {
+    /* Flat by decree. Set once here so no component can quietly reintroduce a radius. */
+    border-radius: 0;
+  }
+
+  html {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    /* The register is dense; a slightly tighter line height keeps a week of rows on one screen. */
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    font-family: var(--font-body);
+    font-size: 0.9375rem;
+    /* Every numeral in this product sits in a column with other numerals. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    /* Archivo is wide by default; pulling the tracking in at display sizes is what makes it read as
+       an official heading rather than a web headline. */
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+
+  /* Focus must be obvious on paper, where there is no glow to fall back on. A solid offset rule in
+     the ink colour is both visible and in keeping. */
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+
+  /* Respected everywhere rather than per-component, so a new animation cannot forget it. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* The register is a document, so it should print like one: no banding to waste toner, and rules
+     dark enough to survive a photocopier. Owners do print payroll registers. */
+  @media print {
+    html {
+      background: #fff;
+    }
+
+    [data-band='true'] {
+      background: #fff !important;
+    }
+
+    [data-print='hide'] {
+      display: none !important;
+    }
+
+    a[href]::after {
+      content: '';
+    }
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * The register
+ * -------------------------------------------------------------------------- */
+
+@layer components {
+  /* A column label, in the voice of a form: small, uppercase, tracked out. Used for table headers,
+     field labels and section eyebrows — the same treatment for all three, because they are the same
+     kind of thing. */
+  .label {
+    font-family: var(--font-display);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--color-ink-soft);
+  }
+
+  /* A figure: a duration, a time, a count. Always mono, always tabular, so a column of them aligns
+     on the digit rather than the glyph. */
+  .figure {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Hairline rules are the only divider in the system. */
+  .rule-t {
+    border-top: 1px solid var(--color-rule);
+  }
+  .rule-b {
+    border-bottom: 1px solid var(--color-rule);
+  }
+}
