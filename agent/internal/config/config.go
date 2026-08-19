@@ -94,6 +94,27 @@ type Settings struct {
 	// BufferMaxBytes and BufferMaxAgeHours cap the local buffer.
 	BufferMaxBytes    int64 `json:"buffer_max_bytes,omitempty"`
 	BufferMaxAgeHours int   `json:"buffer_max_age_hours,omitempty"`
+
+	// DashboardURL is where the employee sees their own data. It appears in the first-run notice
+	// and in the tray menu, so an employee told they are monitored is also told where to look.
+	DashboardURL string `json:"dashboard_url,omitempty"`
+
+	// The notice names the organisation and gives a person to ask. A notice that tells somebody
+	// they are being monitored and offers nobody to contact has informed them of very little, so
+	// these are settings rather than prose — and Validate warns when they are missing.
+	NoticeOrgName      string `json:"notice_org_name,omitempty"`
+	NoticeContactName  string `json:"notice_contact_name,omitempty"`
+	NoticeContactEmail string `json:"notice_contact_email,omitempty"`
+}
+
+// NoticeIsComplete reports whether the notice can name the organisation and a contact.
+//
+// Not part of Validate: an incomplete notice must not stop the agent from running, because the
+// alternative is a deployer removing the notice to get past a startup error. The agent logs a
+// warning instead, and `agentctl doctor` reports it as something to fix before rollout.
+func (s Settings) NoticeIsComplete() bool {
+	return strings.TrimSpace(s.NoticeOrgName) != "" &&
+		strings.TrimSpace(s.NoticeContactEmail) != ""
 }
 
 // Defaults. The upload interval is 60s to match a 60s sample interval — batching more
