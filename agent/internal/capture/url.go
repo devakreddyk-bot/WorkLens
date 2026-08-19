@@ -332,7 +332,7 @@ func splitCandidateTokens(s string) []string {
 func hostFromToken(token string) string {
 	token = strings.Trim(token, ".-/:?=&#%'")
 	if token == "" {
-		return "" //nolint:gocritic // explicit for readability
+		return ""
 	}
 
 	lower := strings.ToLower(token)

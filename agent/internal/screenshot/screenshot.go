@@ -36,18 +36,33 @@ var ErrNoDisplay = errors.New("screenshot: no active display")
 // considered off to one side, for no gain in a timesheet. Which display is primary is the
 // OS's answer (index 0), which is the same display the employee's taskbar is on.
 func Capture() (image.Image, error) {
-	if kbinani.NumActiveDisplays() < 1 {
+	return capturePrimary(kbinani.NumActiveDisplays, kbinani.GetDisplayBounds, kbinani.CaptureRect)
+}
+
+// capturePrimary holds the logic Capture wraps, with the three OS calls passed in.
+//
+// The seam exists so the failure paths are testable. Every one of them — no displays, a
+// monitor disconnected between two queries, a capture that fails, a capture that returns
+// nothing without failing — is a condition that shows up in the field on docking stations
+// and remote sessions, and none of them can be produced on demand on a developer machine
+// with a working screen.
+func capturePrimary(
+	numDisplays func() int,
+	displayBounds func(int) image.Rectangle,
+	captureRect func(image.Rectangle) (*image.RGBA, error),
+) (image.Image, error) {
+	if numDisplays() < 1 {
 		return nil, ErrNoDisplay
 	}
 
 	// The display count and the bounds are two separate queries, so a monitor can be
 	// disconnected in between; that shows up as an empty rectangle rather than an error.
-	bounds := kbinani.GetDisplayBounds(0)
+	bounds := displayBounds(0)
 	if bounds.Empty() {
 		return nil, ErrNoDisplay
 	}
 
-	img, err := kbinani.CaptureRect(bounds)
+	img, err := captureRect(bounds)
 	if err != nil {
 		return nil, fmt.Errorf("screenshot: capture %dx%d: %w", bounds.Dx(), bounds.Dy(), err)
 	}
