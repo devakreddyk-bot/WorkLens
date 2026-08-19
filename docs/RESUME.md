@@ -1,7 +1,7 @@
 # RESUME — WorkLens build state
 
 **Written:** 2026-08-19 · **Repo:** `/Users/devakrkunthuri/worklens` (git, branch `main`)
-**Phases complete:** 0, 1, 2 and 3. **Phase 4 (aggregation + reporting) is next.**
+**Phases complete:** 0, 1, 2, 3 and 4. **Phase 5 (the dashboard) is next.**
 
 This file is refreshed at every checkpoint. It assumes the reader has **zero memory** of
 the session that produced it.
@@ -412,45 +412,39 @@ Manager; the database password is managed by RDS and never enters Terraform stat
 
 ## 9. The exact next instruction
 
-> Begin Phase 4 of the WorkLens build in `/Users/devakrkunthuri/worklens`: timesheet
-> aggregation and the reporting APIs.
+> Begin Phase 5 of the WorkLens build in `/Users/devakrkunthuri/worklens`: the Next.js dashboard.
 >
-> Read `docs/RESUME.md`, then `docs/PLAN.md` §2 (the Aggregation and Serving sections) and §4
-> (the dashboard API surface), then `backend/migrations/0001_init.sql` for the `timesheets`
-> and `timesheet_*_totals` tables.
+> Read `docs/RESUME.md`, then `docs/PLAN.md` §7 (the fourteen-route page map) and §4 (the API
+> surface the dashboard consumes), then `backend/src/middleware/cognitoAuth.ts` — its `POLICY`
+> table and `Principal` shape define what each role may see, and the UI must reflect the server's
+> decision rather than making its own.
 >
 > Confirm the baseline first:
 > ```
-> cd backend && npx vitest run          # 266 tests
+> cd backend && npx vitest run          # 427 tests
 > cd ../agent && go test ./... -race    # 260 tests
 > make check-privacy check-iam check-readme check-functions check-migrations
 > ```
 >
-> Build, in this order:
+> Build `dashboard/` as Next.js 15 App Router + TypeScript + Tailwind v4 + Recharts, per
+> `docs/PLAN.md` §7. Things that will cost time if missed:
 >
-> 1. **`backend/src/aggregation/rollup.ts` as a PURE function** — `(events, config, timezone)
->    -> TimesheetRollup`, no I/O at all. This is where the interesting bugs live and the
->    reason for the split is testability: DST transitions, a session spanning midnight, an
->    all-idle day, an empty day, and project-rule precedence (lowest priority number wins,
->    ties broken by created_at then id, so a run is reproducible). Day boundaries are computed
->    in the EMPLOYEE's timezone, not the server's — `employees.timezone`, captured onto the
->    timesheet row at aggregation time so a later timezone change does not silently
->    reinterpret history.
-> 2. **`runner.ts`** — event fetch, project/category rule application, idempotent upsert on
->    `(org_id, employee_id, work_date)` with `version` incremented. Recomputing a settled day
->    must be free; `AGGREGATION_LOOKBACK_DAYS` defaults to 3 because an agent offline
->    overnight uploads yesterday's events today.
-> 3. **`src/handlers/jobs/aggregateTimesheets.ts`** and **`retentionSweeper.ts`** and
->    **`nonceSweeper.ts`** — the entry points the EventBridge rules already target.
-> 4. **`src/handlers/dashboard/reporting.ts`** — overview, team, employee timesheets, activity,
->    screenshot presigned GETs. Every screenshot URL issued must write an `audit_log` row
->    BEFORE the URL is returned, so the trail cannot fall behind the access.
-> 5. **`src/handlers/dashboard/admin.ts`** — the write side, plus CSV export (streamed).
+> 1. **The API client should reuse the backend's Zod schemas** (`backend/src/schemas/`) rather than
+>    redeclaring the response shapes. That shared contract is deviation D1's whole justification.
+> 2. **`/mfa-required` is a real route, not a modal.** An `owner` or `manager` without a second
+>    factor gets `MFA_REQUIRED` from every admin route, and needs a reachable page to enrol — which
+>    is why `/v1/me` is deliberately not MFA-gated.
+> 3. **The employee self-view is a trust feature, not a lesser view.** `/me` shows an employee
+>    exactly what their manager sees, in the same detail. Build it from the same components.
+> 4. **Screenshot URLs expire in 300 seconds.** Fetch them on demand per image; a gallery that
+>    presigns everything up front will show broken images after five minutes.
+> 5. **The settings page must state each setting's privacy consequence inline**, and diff-confirm
+>    before saving. Turning on screenshots is not a toggle like any other.
+> 6. **CSV export currently returns a base64 JSON envelope**, because `backend/src/shared/http.ts`
+>    JSON-stringifies every body. Either decode it client-side, or add a raw-response branch to
+>    `toProxyResult` first — the CSV encoder itself already streams over keyset pages.
 >
-> Do not scan `activity_events` for dashboard views except the one bounded "recent activity"
-> query; that is what the aggregate tables exist for. Every repository function takes `orgId`
-> first and every query is parameterised — `scripts/check-privacy.sh` and the eslint rules
-> enforce the latter.
+> Load the `frontend-design` skill before building UI: the plan calls for something that reads as a
+> deliberate product rather than a component-library default.
 >
-> Phase 4 is done when `make backend-build` produces all 14 zips and tsc, eslint and vitest
-> are clean.
+> Verify with `cd dashboard && npx tsc --noEmit && npx eslint . && npm run build`.
