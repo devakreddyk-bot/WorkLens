@@ -172,6 +172,9 @@ From the repository root:
 | `make check-privacy` | Forbidden capture APIs anywhere in source. |
 | `make check-iam` | Unjustified IAM resource wildcards. |
 | `make check-readme` | The README's responsible-use section is present and complete. |
+| `make check-functions` | `backend/functions.json` and the Terraform catalogue agree. |
+| `make check-migrations` | Every migration is bundled into the `db-migrate` Lambda. |
+| `make check-routes` | The dashboard calls only endpoints the backend serves. |
 | `make ci` | Everything above, in the order CI runs it. |
 
 `make ci` is what you should run before pushing. Any target whose component

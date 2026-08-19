@@ -322,3 +322,6 @@ jobs:
 
       - name: Every migration is bundled into the db-migrate Lambda
         run: ./scripts/check-migrations.sh
+
+      - name: Dashboard calls only routes the backend serves
+        run: ./scripts/check-routes.sh
