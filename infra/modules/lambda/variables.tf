@@ -156,6 +156,22 @@ variable "presign_expiry_seconds" {
   default     = 900
 }
 
+variable "presign_view_expiry_seconds" {
+  description = <<-EOT
+    Lifetime of a presigned screenshot *view* URL, in seconds. Shorter than the upload TTL on
+    purpose: an upload URL is consumed immediately by the agent, while this one hands a human read
+    access to an image of somebody's screen, and a longer window is a longer period in which a
+    forwarded link still works.
+  EOT
+  type        = number
+  default     = 300
+
+  validation {
+    condition     = var.presign_view_expiry_seconds >= 30 && var.presign_view_expiry_seconds <= 3600
+    error_message = "presign_view_expiry_seconds must be between 30 and 3600."
+  }
+}
+
 variable "create_db_migrate_function" {
   description = <<-EOT
     Create the db-migrate function. RDS is not publicly reachable and there is no NAT gateway,

@@ -41,6 +41,11 @@ locals {
     SCREENSHOT_PREFIX      = var.screenshot_prefix
     S3_KMS_KEY_ARN         = var.s3_kms_key_arn
     PRESIGN_EXPIRY_SECONDS = tostring(var.presign_expiry_seconds)
+    # The dashboard's screenshot-view TTL. Deliberately shorter than the upload TTL: an upload URL
+    # is used immediately by the agent, whereas this one grants a human read access to an image of
+    # somebody's screen. Passed explicitly rather than left on the code default so it is tunable
+    # without a deploy of the backend.
+    PRESIGN_VIEW_EXPIRY_SECONDS = tostring(var.presign_view_expiry_seconds)
   }
 
   device_auth_env = {
