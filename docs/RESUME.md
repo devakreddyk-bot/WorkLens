@@ -1,7 +1,7 @@
 # RESUME — WorkLens build state
 
-**Written:** 2026-08-18 · **Repo:** `/Users/devakrkunthuri/worklens` (git, branch `main`)
-**Phases complete:** 0, 1 and 2. **Phase 3 (the Windows agent) is next.**
+**Written:** 2026-08-19 · **Repo:** `/Users/devakrkunthuri/worklens` (git, branch `main`)
+**Phases complete:** 0, 1, 2 and 3. **Phase 4 (aggregation + reporting) is next.**
 
 This file is refreshed at every checkpoint. It assumes the reader has **zero memory** of
 the session that produced it.
@@ -412,37 +412,45 @@ Manager; the database password is managed by RDS and never enters Terraform stat
 
 ## 9. The exact next instruction
 
-> Begin Phase 3 of the WorkLens build in `/Users/devakrkunthuri/worklens`: the Windows agent.
+> Begin Phase 4 of the WorkLens build in `/Users/devakrkunthuri/worklens`: timesheet
+> aggregation and the reporting APIs.
 >
-> Read `docs/RESUME.md`, then `docs/PLAN.md` §5 (agent design) and §9 (the ordered Phase 3
-> task list), then `docs/ARCHITECTURE.md` §2 for why the boundaries sit where they do.
-> Confirm the baseline first: `cd backend && npx vitest run` should give 232 passing tests,
-> and `make check-privacy check-iam check-readme check-functions check-migrations` should all
-> pass.
+> Read `docs/RESUME.md`, then `docs/PLAN.md` §2 (the Aggregation and Serving sections) and §4
+> (the dashboard API surface), then `backend/migrations/0001_init.sql` for the `timesheets`
+> and `timesheet_*_totals` tables.
 >
-> Build `agent/` in Go 1.23, Windows first, `CGO_ENABLED=0`. Five things will cost a day each
-> if missed:
+> Confirm the baseline first:
+> ```
+> cd backend && npx vitest run          # 266 tests
+> cd ../agent && go test ./... -race    # 260 tests
+> make check-privacy check-iam check-readme check-functions check-migrations
+> ```
 >
-> 1. **Startup order is a privacy control**, not a detail: load config → gate on the
->    first-run notice → create the tray icon (and **exit non-zero if it cannot be created** —
->    the agent must never run invisibly) → only then start capture goroutines.
-> 2. **The privacy filter sits between capture and the SQLite buffer**, not between buffer and
->    upload. Excluded apps, excluded URLs and out-of-hours samples must never be written to
->    disk at all, so no later bug can upload them and nothing is recoverable from the laptop.
-> 3. **An idle sample must drop app and title before storing.** The server's
->    `activity_events_idle_no_attribution_chk` rejects the whole batch otherwise.
-> 4. **Install as a per-user logon Scheduled Task, not a Windows service** (deviation D5).
->    Session-0 isolation makes a service unable to see the interactive desktop at all.
-> 5. **Write the signing code against the existing contract.** `backend/src/shared/signature.ts`
->    and `backend/test/shared/signature.test.ts` define it:
->    `METHOD \n PATH \n TIMESTAMP \n NONCE \n hex(sha256(BODY))`, HMAC-SHA256, hex digest,
->    128-bit hex nonce, ±300s window. Add a shared fixture file both languages test against —
->    this contract silently breaking is the most likely integration failure in the project.
+> Build, in this order:
 >
-> Use `modernc.org/sqlite` (pure Go — `mattn/go-sqlite3` breaks static cross-compilation),
-> `fyne.io/systray`, and `github.com/kbinani/screenshot`. Write the screenshot blur yourself
-> with a test asserting variance drops on a high-contrast fixture: blur is a privacy control,
-> and if it silently no-ops, sensitive pixels ship.
+> 1. **`backend/src/aggregation/rollup.ts` as a PURE function** — `(events, config, timezone)
+>    -> TimesheetRollup`, no I/O at all. This is where the interesting bugs live and the
+>    reason for the split is testability: DST transitions, a session spanning midnight, an
+>    all-idle day, an empty day, and project-rule precedence (lowest priority number wins,
+>    ties broken by created_at then id, so a run is reproducible). Day boundaries are computed
+>    in the EMPLOYEE's timezone, not the server's — `employees.timezone`, captured onto the
+>    timesheet row at aggregation time so a later timezone change does not silently
+>    reinterpret history.
+> 2. **`runner.ts`** — event fetch, project/category rule application, idempotent upsert on
+>    `(org_id, employee_id, work_date)` with `version` incremented. Recomputing a settled day
+>    must be free; `AGGREGATION_LOOKBACK_DAYS` defaults to 3 because an agent offline
+>    overnight uploads yesterday's events today.
+> 3. **`src/handlers/jobs/aggregateTimesheets.ts`** and **`retentionSweeper.ts`** and
+>    **`nonceSweeper.ts`** — the entry points the EventBridge rules already target.
+> 4. **`src/handlers/dashboard/reporting.ts`** — overview, team, employee timesheets, activity,
+>    screenshot presigned GETs. Every screenshot URL issued must write an `audit_log` row
+>    BEFORE the URL is returned, so the trail cannot fall behind the access.
+> 5. **`src/handlers/dashboard/admin.ts`** — the write side, plus CSV export (streamed).
 >
-> Verify with `cd agent && go vet ./... && go build ./... && go test ./... -race`, and
-> `make agent-windows` for the cross-compile. Go 1.26.6 is on the Homebrew path.
+> Do not scan `activity_events` for dashboard views except the one bounded "recent activity"
+> query; that is what the aggregate tables exist for. Every repository function takes `orgId`
+> first and every query is parameterised — `scripts/check-privacy.sh` and the eslint rules
+> enforce the latter.
+>
+> Phase 4 is done when `make backend-build` produces all 14 zips and tsc, eslint and vitest
+> are clean.
