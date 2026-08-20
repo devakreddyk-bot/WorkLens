@@ -21,11 +21,26 @@
 # type system cannot. It is deliberately one-directional: an endpoint the backend serves and
 # the dashboard never calls is normal (the agent's own routes, anything not yet surfaced).
 # The reverse — a call with no route behind it — is always a bug.
+#
+# # The second comparison: API Gateway against the handlers
+#
+# There is a *third* hand-maintained route list, in `infra/modules/api/main.tf`, and it is the
+# one that decides what is reachable at all. It drifted too, and worse. `POST /aggregation/run`
+# was wired straight at the `aggregate-timesheets` job Lambda, which takes an `AggregateEvent`
+# rather than a proxy event and reads no Cognito claim — so it ran for every organisation with
+# default arguments, performed no authorisation whatsoever, and returned a shape the gateway
+# rejects. Any signed-in user of any role could trigger it.
+#
+# That is the failure this half exists to catch: a route exposed by the gateway whose target has
+# no entry in a handler router has not been through the POLICY table, because the POLICY table
+# lives in those routers. A route in a router but not in the gateway is the milder direction —
+# unreachable rather than unguarded — and is reported too, since it is dead code either way.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 client="$repo_root/dashboard/src/lib/api.ts"
 handlers="$repo_root/backend/src/handlers"
+gateway="$repo_root/infra/modules/api/main.tf"
 
 for f in "$client" "$handlers"; do
   if [[ ! -e "$f" ]]; then
@@ -36,12 +51,12 @@ done
 
 echo "check-routes: comparing dashboard/src/lib/api.ts against the backend route tables..."
 
-python3 - "$client" "$handlers" <<'PY'
+python3 - "$client" "$handlers" "$gateway" <<'PY'
 import os
 import re
 import sys
 
-client_path, handlers_dir = sys.argv[1], sys.argv[2]
+client_path, handlers_dir, gateway_path = sys.argv[1], sys.argv[2], sys.argv[3]
 
 # A path with its variable segments flattened, so `/employees/${encodeURIComponent(id)}/activity`
 # and `/employees/{id}/activity` compare equal. Only the shape is checked; parameter names are
@@ -118,6 +133,54 @@ if missing:
     print("check-routes: FAILED.", file=sys.stderr)
     sys.exit(1)
 
-print(f"check-routes: OK — all {len(called)} call(s) match a route "
-      f"({len(served)} served in total).")
+# --- what API Gateway exposes -------------------------------------------------------------
+# The route map keys in the api module are exactly `"METHOD /path"`. Device routes are mounted
+# under /device/ and answered by single-purpose Lambdas with no router, so they are listed
+# separately rather than compared.
+gateway: set[tuple[str, str]] = set()
+if os.path.isfile(gateway_path):
+    with open(gateway_path, encoding="utf-8") as fh:
+        gateway_src = fh.read()
+    for match in re.finditer(r'^\s*"([A-Z]+) (/[^"]*)"\s*=\s*\{', gateway_src, re.M):
+        gateway.add((match.group(1), shape(match.group(2))))
+
+device = {(m, p) for m, p in gateway if p == "/device" or p.startswith("/device/")}
+gateway_dashboard = gateway - device
+
+status = 0
+
+if gateway_dashboard:
+    unguarded = sorted(gateway_dashboard - served)
+    unreachable = sorted(served - gateway_dashboard)
+
+    if unguarded:
+        status = 1
+        print(file=sys.stderr)
+        print("Exposed by API Gateway with no handler route behind it:", file=sys.stderr)
+        for method, path in unguarded:
+            print(f"  {method:6} {path}", file=sys.stderr)
+        print(file=sys.stderr)
+        print("A route with no entry in a handler router has not been through the POLICY table,", file=sys.stderr)
+        print("because that is where the POLICY table is applied. Either route it at a handler", file=sys.stderr)
+        print("that authorises it, or remove it from infra/modules/api/main.tf.", file=sys.stderr)
+
+    if unreachable:
+        status = 1
+        print(file=sys.stderr)
+        print("Served by a handler but not exposed by API Gateway (dead code):", file=sys.stderr)
+        for method, path in unreachable:
+            print(f"  {method:6} {path}", file=sys.stderr)
+        print(file=sys.stderr)
+        print("Add it to the route map in infra/modules/api/main.tf, or delete the handler.", file=sys.stderr)
+else:
+    print("check-routes: no gateway route map found — skipping the gateway comparison.", file=sys.stderr)
+
+if status != 0:
+    print(file=sys.stderr)
+    print("check-routes: FAILED.", file=sys.stderr)
+    sys.exit(1)
+
+print(f"check-routes: OK — {len(called)} dashboard call(s) match a handler route; "
+      f"{len(gateway_dashboard)} gateway route(s) agree with {len(served)} served "
+      f"({len(device)} device route(s) not compared).")
 PY

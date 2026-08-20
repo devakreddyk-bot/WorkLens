@@ -59,8 +59,6 @@ locals {
     "devices/enrollment-tokens",
     "devices/{id}",
     "devices/{id}/revoke",
-    "aggregation",
-    "aggregation/run",
     "reports",
     "reports/export",
     "audit-log",
@@ -131,10 +129,30 @@ locals {
     "POST /deletion-requests"              = { path = "deletion-requests", method = "POST", function = "admin-api", auth = "cognito" }
     "POST /deletion-requests/{id}/execute" = { path = "deletion-requests/{id}/execute", method = "POST", function = "admin-api", auth = "cognito" }
 
-    # On-demand aggregation is routed straight at the aggregation function
-    # rather than proxied through admin-api: an in-VPC Lambda cannot reach the
-    # Lambda control plane without a NAT gateway or another interface endpoint.
-    "POST /aggregation/run" = { path = "aggregation/run", method = "POST", function = "aggregate-timesheets", auth = "cognito" }
+    # There is deliberately no `POST /aggregation/run`. It existed here, wired
+    # straight at the aggregation function because an in-VPC Lambda cannot reach
+    # the Lambda control plane without a NAT gateway — the routing reasoning was
+    # sound, but the endpoint could not work and was not safe:
+    #
+    #   - `aggregate-timesheets` takes an `AggregateEvent` ({from, to, org_id,
+    #     employee_id, lookback_days}), not an API Gateway proxy event. With
+    #     AWS_PROXY and no request template it received the proxy event, found
+    #     none of those fields, and ran with defaults — every organisation — then
+    #     returned a shape API Gateway rejects, so the caller saw a 502 after the
+    #     work had already happened.
+    #   - It performs no authorisation. `auth = "cognito"` proves the JWT is
+    #     valid and nothing more; the handler never reads a claim, so any
+    #     signed-in user of any role, `employee` included, could trigger a
+    #     cross-organisation aggregation. Every other route's authorisation comes
+    #     from the POLICY table in `middleware/cognitoAuth.ts`, and this one
+    #     bypassed it entirely.
+    #
+    # A synchronous HTTP trigger is also the wrong shape: the integration timeout
+    # is 29 seconds and an aggregation run is not bounded by that. If on-demand
+    # aggregation becomes a product feature it wants to be asynchronous — enqueue
+    # and poll — which is a design decision, not a patch. Until then it is an
+    # operator action: invoke the function directly with an explicit payload.
+    # See docs/OPERATIONS.md.
   }
 
   # Distinct functions actually wired to a route; one invoke permission each.

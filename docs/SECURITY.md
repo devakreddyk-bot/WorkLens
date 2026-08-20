@@ -93,6 +93,44 @@ A request naming a *different* employee is **refused**, not quietly narrowed to 
 would make the request appear to succeed while returning the wrong person's data shape, which is a
 worse failure than a 403.
 
+### 2.3.1 A route that skips the POLICY table is unguarded, and one did
+
+Authorisation lives in one place: the `POLICY` table in `backend/src/middleware/cognitoAuth.ts`,
+applied by the router each handler Lambda builds. `auth = "cognito"` on an API Gateway route means
+only that the JWT is valid — it establishes *who* is calling, never *what they may do*. A route
+whose target Lambda has no router entry has therefore been authenticated and not authorised.
+
+`POST /aggregation/run` was such a route, and it is now removed. It was wired straight at the
+`aggregate-timesheets` job Lambda — the routing reasoning was sound, since an in-VPC Lambda cannot
+reach the Lambda control plane without a NAT gateway — but the endpoint could not work and was not
+safe:
+
+- That function's handler takes an `AggregateEvent` (`{from, to, org_id, employee_id,
+  lookback_days}`), not a proxy event. With `AWS_PROXY` and no request template it received the
+  proxy event, found none of those fields, and ran with defaults — meaning **every organisation**.
+- It reads no claim at all, so **any signed-in user of any role, `employee` included, could trigger
+  a cross-organisation aggregation run.**
+- It returned an `AggregateResponse` rather than `{statusCode, body}`, so API Gateway answered the
+  caller with a 502 *after* the work had already run. The failure was invisible to the caller and
+  invisible in the response.
+
+No data was disclosed by it — aggregation recomputes each organisation's own timesheets from that
+organisation's own events, and the response never reached the caller — so the exposure was
+unauthorised expensive compute rather than unauthorised reading. It is still the most serious
+authorisation defect found in this codebase, because it bypassed the single mechanism the whole
+design relies on.
+
+Two things are worth drawing out. First, nothing detected it: `terraform validate` passes on it,
+every test passes, and the dashboard never called it, so no user-visible behaviour was wrong.
+Second, the gate that now catches it — `scripts/check-routes.sh` — did not, because it compared the
+dashboard's calls against the handler routers and never looked at the gateway. It now compares both
+directions, and the check is verified by reintroducing this exact route and watching it fail.
+
+A synchronous HTTP trigger was also the wrong shape regardless: the integration timeout is 29
+seconds and an aggregation run is not bounded by it. On-demand aggregation is an operator action
+against the function directly (`docs/OPERATIONS.md`); as a product feature it would need to be
+asynchronous, which is a design decision rather than a patch.
+
 ### 2.4 Deletion order: objects before rows
 
 Both the retention sweeper and the erasure path delete the S3 object before the database row that
