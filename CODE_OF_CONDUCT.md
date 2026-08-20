@@ -60,7 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behaviour may be
 reported to the community leaders responsible for enforcement at
-**devakreddyk@stelther.com.au**.
+**devkreddyk@gmail.com**.
 
 > This is currently the same address as the security contact in
 > [SECURITY.md](SECURITY.md), because this project has one maintainer. That is

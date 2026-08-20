@@ -17,7 +17,7 @@ Report it privately, by either route:
    **Security → Advisories → Report a vulnerability**. This creates a private
    thread visible only to you and the maintainers, and it lets us issue a
    patched release and a CVE from the same place.
-2. **Email** — devakreddyk@stelther.com.au.
+2. **Email** — devkreddyk@gmail.com.
 
 > A note on which route to pick. The advisory route is preferred and not merely
 > listed first: it gives us a private thread, a patched release and a CVE from
