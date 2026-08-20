@@ -328,3 +328,6 @@ jobs:
 
       - name: Dashboard calls only routes the backend serves
         run: ./scripts/check-routes.sh
+
+      - name: Documentation references resolve
+        run: ./scripts/check-docs.sh

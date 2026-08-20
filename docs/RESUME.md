@@ -1,12 +1,22 @@
 # RESUME — WorkLens build state
 
 **Written:** 2026-08-20 · **Repo:** `/Users/devakrkunthuri/worklens` (git, branch `main`)
-**Phases complete:** 0, 1, 2, 3, 4 and 5. **Phase 6 (hardening) is next**, then Phase 7 (docs
-and release).
+**Phases complete: 0 through 7.** The build is finished and tagged `v0.1.0`.
 
-**State at this checkpoint:** 427 backend tests and 13 agent packages pass, both Windows
-binaries build, the dashboard's `tsc` / `eslint --max-warnings 0` / `next build` are clean,
-`terraform validate` is clean, and all six compliance gates pass. Nothing is half-written.
+**State at this checkpoint:** 434 backend tests, 263 agent tests across 13 packages under
+`-race`, 102 dashboard tests. Both Windows binaries build (verified under Go 1.23, the version CI
+pins). `tsc`, `eslint --max-warnings 0` and `next build` are clean. `terraform validate` and
+`fmt -check` are clean. All seven compliance gates pass. Nothing is half-written.
+
+**Two things remain, and both need the author rather than more code:**
+
+1. **Create the GitHub repository and push.** CI has never executed on a runner. Every job has been
+   reproduced locally against a clean `git archive` of HEAD — including `npm ci` from the lockfile
+   alone and the agent under `GOTOOLCHAIN=go1.23.0` — but runner-specific behaviour is unverified.
+   The badge URLs and issue-template links in `README.md` and `CHANGELOG.md` use a placeholder slug
+   (`github.com/worklens/worklens`) and will 404 until replaced.
+2. **Deploy it.** Nothing has ever run on AWS. `docs/DEPLOYMENT.md` is the runbook; it says plainly
+   that it is derived rather than tested.
 
 This file is refreshed at every checkpoint. It assumes the reader has **zero memory** of
 the session that produced it.
@@ -269,42 +279,52 @@ server-side admin MFA gate (D7), and `docs/{SECURITY,RESPONSIBLE_USE}.md`.
 ---
 
 ## 5. What is IN PROGRESS
-**Nothing.** No half-written file, no background agent running, no failing test.
-
-The last piece of delegated work (the dashboard pages) was audited before it was committed
-rather than taken on trust, which is how the `api.ts` defect in §7 was found.
+**Nothing.** The build is complete: seven phases, no half-written file, no failing test, no
+background agent running.
 
 ---
 
 ## 6. What is NEXT, in order
-**Phase 6 — hardening.** The security-checklist pass is done and written up in
-`docs/SECURITY.md`, including, deliberately, what is *not* defended (AWS itself, a
-compromised laptop, a malicious deployer, traffic analysis) and what is *unverified*
-(nothing has been deployed; IAM has never been exercised; the WAF has never seen traffic;
-the Windows syscall layer has never run on Windows; there has been no pen test). Remaining:
+The build is done. What follows are the things a reader would otherwise rediscover.
 
-1. Fill the test gaps. The thinnest areas are the dashboard's server actions and
-   `src/lib/dates.ts`; `internal/capture` is tested at the boundary but its Win32 layer
-   cannot be tested off-Windows and should be stated as such rather than mocked into a
-   false green.
-2. Confirm CI is green on all four toolchains (Go, backend TS, dashboard TS, Terraform) —
-   it has never run on a pushed branch, only locally via `make ci`.
+### Needs the author, not code
 
-**Phase 7 — documentation and release.** `README.md` in full, then
-`docs/{DEPLOYMENT,CONFIGURATION,OPERATIONS,API}.md`, then tag `v0.1.0`. This is the
-author's first public repository, so the responsible-use posture and the honesty of
-`docs/SECURITY.md` matter as much as the code.
+- **Create the GitHub repository, push, and watch CI run.** See the header. The placeholder slug
+  `github.com/worklens/worklens` appears in the README badge, the issue templates and the
+  CHANGELOG's compare links.
+- **Fill the two contact placeholders**: `SECURITY_CONTACT_PLACEHOLDER` in `SECURITY.md` and
+  `CONDUCT_CONTACT_PLACEHOLDER` in `CODE_OF_CONDUCT.md`. Both files document a working fallback
+  (a GitHub private security advisory) in the meantime.
+- **Set `alarm_email`** in `terraform.tfvars` before treating any deployment as production. Unset,
+  alarms publish to a topic with no subscriber, and a failed nightly aggregation produces no
+  timesheets silently. The root module prints a warning about this at apply time.
+- **Deploy, following `docs/DEPLOYMENT.md`**, and then re-read `docs/SECURITY.md` §4 — most of what
+  it lists as unverified becomes verifiable the moment something is running.
 
-**Known follow-ups, none blocking:**
-- CSV export returns a base64 JSON envelope because `backend/src/shared/http.ts` serialises
-  every body with `JSON.stringify`. A real `text/csv` response needs a raw-response branch
-  in its `toProxyResult`. The client reassembles the bytes so the BOM and CRLF endings stay
-  exact; it is a wart, not a bug.
-- No rule-preview endpoint: an admin cannot see what a project rule would match before
-  saving it.
-- No PDF export.
-- `final_snapshot_identifier` in `modules/database` is a fixed name, so a second teardown of
-  the same environment collides with the first one's snapshot.
+### Known gaps, deliberately not built
+
+Each is stated in `README.md` and `CHANGELOG.md` rather than left to be discovered:
+
+- **No PDF export.** The API rejects `format=pdf` with a message saying where it would be rendered.
+- **No on-demand aggregation endpoint.** It is an operator action against the function. The route
+  that used to exist was authenticated but not authorised — `docs/SECURITY.md` §2.3.1. A real
+  feature would need to be asynchronous, because the gateway's integration timeout is 29 seconds
+  and an aggregation run is not bounded by it.
+- **No rule-preview endpoint.** An owner cannot see what a project rule would match before saving.
+- **CSV arrives base64-encoded in a JSON envelope**, not as `text/csv`. Fixing it means a
+  raw-response branch in `src/shared/http.ts`'s `toProxyResult`.
+- **`next@16` upgrade outstanding.** Three high-severity advisories sit in the dashboard's
+  dependency tree, all transitive through `next` and unfixed on 15.x. Neither is reachable as built
+  — `docs/SECURITY.md` §4.1 says exactly why, and what would make them reachable.
+- **`final_snapshot_identifier`** in `modules/database` is a fixed name, so a second teardown of the
+  same environment collides with the first one's snapshot.
+
+### The Win32 layer will need real hardware
+
+`internal/capture`, `internal/screenshot` and `internal/platform` cross-compile and pass `go vet`
+for `windows/amd64`, and every package with testable logic is tested — but the syscall layer has
+never executed. Do not mock it into a false green; run it. `docs/AGENT.md` §10 states this as a
+known limit, and that is the right posture until somebody runs the binary on Windows.
 
 ---
 
@@ -441,40 +461,35 @@ Manager; the database password is managed by RDS and never enters Terraform stat
 ---
 
 ## 9. The exact next instruction
-> Continue the WorkLens build in `/Users/devakrkunthuri/worklens` at **Phase 6
-> (hardening)**, then Phase 7. Phases 0–5 are complete and committed.
+The build is complete, so there is no next instruction in the sense the earlier checkpoints had
+one. If you are picking this up cold:
+
+> Read `docs/RESUME.md`, then `README.md`, then `docs/SECURITY.md` §4 — in that order. The first
+> tells you where the project is, the second what it is for, and the third what it does *not* do
+> and what has never been verified. Then confirm the baseline before changing anything:
 >
-> Read `docs/RESUME.md` first, then `docs/SECURITY.md` — its "what is unverified" section is
-> the honest inventory of what Phase 6 has to either close or state plainly.
->
-> Confirm the baseline before changing anything:
 > ```
-> cd backend && npx vitest run                    # 427 tests, 17 files
-> cd ../agent && go test ./... -race              # 13 packages
-> cd ../dashboard && npx tsc --noEmit && npx eslint . --max-warnings 0 && npm run build
-> cd .. && make check-privacy check-iam check-readme check-functions check-migrations check-routes
+> make ci
 > ```
 >
-> Phase 6, in order:
+> That runs lint, every test suite, every build, `terraform validate` and all seven gates. It
+> passes on a clean checkout at `v0.1.0`.
 >
-> 1. **Fill the test gaps**, thinnest first: the dashboard's server actions
->    (`src/lib/actions.ts`) and `src/lib/dates.ts`. Prefer tests that would have caught a real
->    defect over tests that raise a coverage number.
-> 2. **Do not mock the agent's Win32 layer into a false green.** It cannot run off-Windows.
->    State that as a known limit — `docs/AGENT.md` §10 already does — rather than pretending.
-> 3. **Get CI green on a pushed branch.** `make ci` passes locally but the workflow has never
->    actually run; expect the usual first-run problems (toolchain versions, working
->    directories, cache keys).
->
-> Then Phase 7: `README.md` in full, `docs/{DEPLOYMENT,CONFIGURATION,OPERATIONS,API}.md`,
-> `CHANGELOG.md`, tag `v0.1.0`.
->
-> Standing constraints that outrank convenience, from `docs/MASTER_BUILD_PROMPT.md`:
-> **no keystroke content, no password, webcam, microphone or clipboard capture; the agent stays
-> visible (tray icon, first-run notice) and cannot be made covert; privacy rules are applied on
-> the device before upload; no secret in the repo, in a comment, or in a chat message.** No
-> placeholders or `TODO`s in shipped code — a value the deployer must supply belongs in
+> The standing constraints from `docs/MASTER_BUILD_PROMPT.md` outrank convenience and do not expire
+> with the build: **no keystroke content, no password, webcam, microphone or clipboard capture; the
+> agent stays visible (tray icon, first-run notice) and cannot be made covert; privacy rules are
+> applied on the device before upload; no secret in the repository, in a comment, or in a chat
+> message.** No placeholders in shipped code — a value the deployer must supply belongs in
 > `.env.example` with a comment saying so.
 >
-> If a delegated agent reports that it changed existing code, verify the claim before
-> accepting it, and say plainly in the commit message when the pre-existing code was wrong.
+> Three habits earned their place during this build and are worth keeping:
+>
+> 1. **Verify a delegated agent's claims before acting on them.** Of the findings reported during
+>    Phase 7, five were real and one was overstated. Both outcomes mattered.
+> 2. **A gate is not trustworthy until it has been proved to bite.** Every gate in `scripts/` has
+>    been tested by reintroducing the defect it exists to catch. Two of them reported a false
+>    positive on their first run.
+> 3. **Prefer a contract over care** where two components must agree and cannot share code.
+>    `contracts/signature-vectors.json` and `contracts/device-config-response.json` both exist
+>    because a hand-maintained agreement drifted, and in the second case shipped a silent break of
+>    the product's central runtime control.

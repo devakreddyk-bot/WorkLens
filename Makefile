@@ -116,7 +116,7 @@ test: agent-test backend-test dashboard-test ## Run every test suite
 
 build: agent-windows backend-build dashboard-build ## Build every component
 
-ci: lint test build tf-validate check-privacy check-iam check-readme check-functions check-migrations check-routes ## Run everything CI runs
+ci: lint test build tf-validate check-privacy check-iam check-readme check-functions check-migrations check-routes check-docs ## Run everything CI runs
 
 clean: ## Remove build artefacts, bundles, caches and Terraform plans
 	@rm -rf $(AGENT_BIN_DIR) $(LAMBDA_ARTIFACTS)
@@ -303,9 +303,13 @@ check-migrations: ## Fail if a migration file is not bundled into the db-migrate
 check-routes: ## Fail if the dashboard calls an endpoint the backend does not serve
 	@./scripts/check-routes.sh
 
+check-docs: ## Fail on a documentation link or path reference that goes nowhere
+	@./scripts/check-docs.sh
+
 .PHONY: env-backend env-dashboard help bootstrap fmt lint test build ci clean \
 	agent-windows agent-test \
 	backend-build backend-test migrate \
 	dashboard-build dashboard-test dashboard-dev \
 	tf-fmt tf-fmt-check tf-validate tf-plan tf-apply \
-	check-privacy check-iam check-readme check-functions check-migrations check-routes
+	check-privacy check-iam check-readme check-functions check-migrations check-routes \
+	check-docs

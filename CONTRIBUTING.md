@@ -43,8 +43,7 @@ one of them possible "if configured".
   icon, suppresses the first-run notice, or lets capture start before the
   employee has acknowledged it.
 - Removing an employee's ability to see their own data.
-- Turning any of `scripts/check-privacy.sh`, `scripts/check-iam.sh` or
-  `scripts/check-readme.sh` into a warning instead of a failure.
+- Turning any of the seven gates in `scripts/` into a warning instead of a failure.
 
 Idle detection uses `GetLastInputInfo`, which returns only a timestamp. If a
 change would need more than a timestamp to detect activity, it is out of scope.
@@ -175,7 +174,8 @@ From the repository root:
 | `make check-readme` | The README's responsible-use section is present and complete. |
 | `make check-functions` | `backend/functions.json` and the Terraform catalogue agree. |
 | `make check-migrations` | Every migration is bundled into the `db-migrate` Lambda. |
-| `make check-routes` | The dashboard calls only endpoints the backend serves. |
+| `make check-routes` | The dashboard calls only endpoints the backend serves, and every gateway route has a handler behind it. |
+| `make check-docs` | Every documentation link and path reference resolves. |
 | `make ci` | Everything above, in the order CI runs it. |
 
 `make ci` is what you should run before pushing. Any target whose component

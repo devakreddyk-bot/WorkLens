@@ -562,7 +562,7 @@ The event contract is `AggregateEvent` in `backend/src/handlers/jobs/aggregateTi
 | `source` | Free text, appears in every log line for the run. Use it — `"manual"` versus `"schedule"` is how you tell your run apart from the nightly one afterwards. |
 
 Dates are *local* dates, and each employee's day boundaries are computed in that employee's own
-timezone inside the job (`aggregation/zone.ts`), so one run over the same `from`/`to` can cover
+timezone inside the job (`src/aggregation/zone.ts`), so one run over the same `from`/`to` can cover
 different UTC instants for different people. That is intentional and it is why the response reports
 `from`/`to` per organisation.
 
