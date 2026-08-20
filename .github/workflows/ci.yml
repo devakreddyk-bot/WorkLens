@@ -86,7 +86,7 @@ jobs:
 
       # Module downloads and the build cache dominate this job's runtime.
       - name: Cache Go modules and build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
@@ -145,7 +145,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Cache npm downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-npm-backend-${{ hashFiles('backend/package-lock.json') }}
@@ -188,7 +188,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Cache npm downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-npm-dashboard-${{ hashFiles('dashboard/package-lock.json') }}
@@ -197,7 +197,7 @@ jobs:
 
       # Next.js reuses this across builds for a large speed-up.
       - name: Cache Next.js build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: dashboard/.next/cache
           key: ${{ runner.os }}-next-${{ hashFiles('dashboard/package-lock.json') }}-${{ hashFiles('dashboard/src/**') }}
@@ -249,7 +249,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Cache provider plugins
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.TF_PLUGIN_CACHE_DIR }}
           key: ${{ runner.os }}-tf-${{ env.TERRAFORM_VERSION }}-${{ hashFiles('infra/**/.terraform.lock.hcl') }}
