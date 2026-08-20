@@ -1,6 +1,6 @@
 # WorkLens
 
-[![CI](https://github.com/worklens/worklens/actions/workflows/ci.yml/badge.svg)](https://github.com/worklens/worklens/actions/workflows/ci.yml)
+[![CI](https://github.com/devakreddyk-bot/worklens/actions/workflows/ci.yml/badge.svg)](https://github.com/devakreddyk-bot/worklens/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go 1.23](https://img.shields.io/badge/go-1.23-00ADD8.svg)](https://go.dev/dl/)
 [![Node 22](https://img.shields.io/badge/node-22-339933.svg)](https://nodejs.org/en/download)

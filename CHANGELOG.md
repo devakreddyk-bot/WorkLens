@@ -146,5 +146,5 @@ Stated plainly, because each is something a reader might reasonably expect:
   itself has not executed on a runner.
 - **No penetration test or external review.**
 
-[Unreleased]: https://github.com/worklens/worklens/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/worklens/worklens/releases/tag/v0.1.0
+[Unreleased]: https://github.com/devakreddyk-bot/worklens/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/devakreddyk-bot/worklens/releases/tag/v0.1.0
