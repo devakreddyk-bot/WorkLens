@@ -130,9 +130,7 @@ Three things are **not** built, stated here rather than left to be discovered: *
 API rejects `format=pdf` with a message saying so), **a rule-preview endpoint** (an owner cannot see
 what a project rule would match before saving it), and **on-demand aggregation as an API call** — it
 is an operator action against the aggregation function, for the reasons in
-[docs/SECURITY.md](docs/SECURITY.md) §2.3.1. The CSV also arrives base64-encoded inside a JSON
-envelope rather than as `text/csv`; [docs/API.md](docs/API.md) §5 explains why and what fixing it
-takes.
+[docs/SECURITY.md](docs/SECURITY.md) §2.3.1.
 
 ## What the dashboard looks like
 

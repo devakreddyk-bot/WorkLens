@@ -311,8 +311,8 @@ Each is stated in `README.md` and `CHANGELOG.md` rather than left to be discover
   feature would need to be asynchronous, because the gateway's integration timeout is 29 seconds
   and an aggregation run is not bounded by it.
 - **No rule-preview endpoint.** An owner cannot see what a project rule would match before saving.
-- **CSV arrives base64-encoded in a JSON envelope**, not as `text/csv`. Fixing it means a
-  raw-response branch in `src/shared/http.ts`'s `toProxyResult`.
+- ~~CSV arrives base64-encoded in a JSON envelope~~ — **fixed.** `src/shared/http.ts` has a
+  raw-response branch (`raw`, `attachment`) and the export is a real `text/csv` download.
 - **`next@16` upgrade outstanding.** Three high-severity advisories sit in the dashboard's
   dependency tree, all transitive through `next` and unfixed on 15.x. Neither is reachable as built
   — `docs/SECURITY.md` §4.1 says exactly why, and what would make them reachable.

@@ -3,16 +3,18 @@
 /**
  * The CSV download.
  *
- * # Why the file is assembled in the browser
+ * # Why the file still passes through the browser
  *
- * The export route returns the CSV **base64-encoded inside a JSON envelope**, not as `text/csv`.
- * `backend/src/shared/http.ts` serialises every response body with `JSON.stringify`, so a raw CSV body
- * is not expressible through the shared wrapper — a real `text/csv` response would need a raw-response
- * branch in its `toProxyResult`. Base64 is what keeps the byte-order mark and the CRLF line endings
- * byte-exact through a JSON transport, which is what Excel needs to open the file without mangling it.
+ * The export route returns a real `text/csv` body now, so there is no envelope to decode — this used
+ * to hold a base64 decoder for exactly that. The bytes are still assembled into a Blob here rather
+ * than fetched by a plain link, for a reason that has nothing to do with encoding: the API requires
+ * a bearer token that client JavaScript never holds. An `<a href>` straight to the export would be
+ * unauthenticated, and the alternative — putting an access token in a URL — writes a credential into
+ * browser history and into every log between here and the API.
  *
- * So the bytes are decoded here and handed to the browser as a Blob. The alternative — a link straight
- * to the API — would also mean putting an access token in a URL.
+ * The Blob is built from the text with an explicit UTF-8 type. The byte-order mark arrives as a
+ * `U+FEFF` character at the start of the string and is encoded back to `EF BB BF`, which is what lets
+ * Excel open the file without mangling an accented name.
  *
  * # Why it is a button and not a link
  *
@@ -26,22 +28,6 @@ import { useState, useTransition } from 'react';
 import { exportCsv } from '@/lib/actions';
 
 import { buttonClass } from './Fields';
-
-/**
- * base64 to bytes. `atob` gives one character per byte; the loop is what turns them into bytes.
- *
- * The buffer is allocated first and the view taken from it, rather than the other way round, so the
- * type is an `ArrayBuffer`-backed view — `Blob` will not accept a view over a possibly-shared buffer.
- */
-function decodeBase64(value: string): ArrayBuffer {
-  const binary = atob(value);
-  const buffer = new ArrayBuffer(binary.length);
-  const bytes = new Uint8Array(buffer);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return buffer;
-}
 
 export function ExportButton({
   from,
@@ -70,21 +56,23 @@ export function ExportButton({
           return;
         }
 
-        const envelope = result.value;
-        const blob = new Blob([decodeBase64(envelope.content)], { type: envelope.content_type });
+        const file = result.value;
+        const blob = new Blob([file.content], { type: file.contentType });
         const url = URL.createObjectURL(blob);
 
         const anchor = document.createElement('a');
         anchor.href = url;
-        anchor.download = envelope.filename;
+        anchor.download = file.filename;
         anchor.click();
         // Released immediately: the click has already handed the blob to the download, and holding the
         // URL keeps a copy of every employee's hours alive in the tab's memory.
         URL.revokeObjectURL(url);
 
-        setMessage(
-          `${envelope.filename} — ${envelope.row_count} ${envelope.row_count === 1 ? 'row' : 'rows'}, ${Math.max(1, Math.round(envelope.byte_count / 1024))} KB.`,
-        );
+        // Row and byte counts came from the old JSON envelope and are no longer sent — the response
+        // is the file itself. Reporting the size the browser actually received is more honest than
+        // reporting a number the server computed about bytes it hoped to send.
+        const kb = Math.max(1, Math.round(blob.size / 1024));
+        setMessage(`${file.filename} — ${kb} KB.`);
       })();
     });
   }

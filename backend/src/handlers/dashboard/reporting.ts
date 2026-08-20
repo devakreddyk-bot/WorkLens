@@ -63,8 +63,8 @@ import {
 } from '../../schemas/dashboard.js';
 import { config } from '../../shared/config.js';
 import { errors } from '../../shared/errors.js';
-import type { JsonResponse, RequestContext } from '../../shared/http.js';
-import { ok, withHandler } from '../../shared/http.js';
+import type { JsonResponse, RawResponse, RequestContext } from '../../shared/http.js';
+import { attachment, ok, withHandler } from '../../shared/http.js';
 
 /**
  * Module scope, so a warm container reuses the client and its resolved credentials. Reached
@@ -706,7 +706,7 @@ function exportCells(row: ExportRow): readonly (string | number | null)[] {
 async function exportTimesheets(
   ctx: RequestContext,
   principal: Principal,
-): Promise<JsonResponse> {
+): Promise<RawResponse> {
   const query = parseQuery(exportQuery, ctx);
 
   const scope = resolveEmployeeScope(principal, query.employee_id);
@@ -746,14 +746,16 @@ async function exportTimesheets(
     to: query.to,
   });
 
-  return ok({
-    filename,
-    content_type: 'text/csv; charset=utf-8',
-    encoding: 'base64',
-    byte_count: collected.byteCount,
-    row_count: counted.rows,
-    content: collected.body.toString('base64'),
-  });
+  // A real `text/csv` body. This used to be base64 inside a JSON envelope, because
+  // `src/shared/http.ts` serialised every response with `JSON.stringify` and a CSV is not
+  // expressible that way; `attachment()` is the raw-response branch that removed the need. The
+  // bytes are identical either way — what changes is that a client other than this dashboard now
+  // gets a spreadsheet when it asks for one, and `Content-Type` stops lying.
+  //
+  // `toString('utf8')` keeps the byte-order mark as a U+FEFF character, which API Gateway re-encodes
+  // to EF BB BF. That mark is the reason Excel reads the file as UTF-8 instead of as the machine's
+  // local codepage, so it is not decoration.
+  return attachment(collected.body.toString('utf8'), 'text/csv; charset=utf-8', filename);
 }
 
 // ---------------------------------------------------------------------------
@@ -768,10 +770,11 @@ async function exportTimesheets(
  *
  *  - `GET /v1/audit-log` lives in `admin.ts`, because `infra/modules/api/main.tf` routes it at the
  *    `admin-api` function. Putting it here would make it unreachable in a deployed stack.
- *  - `POST /v1/aggregation/run` is routed straight at `aggregate-timesheets` for the reason that
- *    module's comment gives: an in-VPC Lambda cannot reach the Lambda control plane without a NAT
- *    gateway (D6), so `admin-api` cannot invoke it. It uses `withCognitoAuth` from
- *    `src/middleware/cognitoAuth.ts` to get the same authentication, roles and D7 gate.
+ *  - There is no `POST /v1/aggregation/run`. It was routed straight at `aggregate-timesheets`
+ *    because an in-VPC Lambda cannot reach the Lambda control plane without a NAT gateway (D6), so
+ *    `admin-api` could not invoke it — but that function takes a job event rather than a proxy
+ *    event and reads no Cognito claim, so the route was authenticated and never authorised. See
+ *    `docs/SECURITY.md` section 2.3.1. Re-running aggregation is an operator action.
  */
 const router = createDashboardRouter([
   { method: 'GET', path: '/me', policy: POLICY.self, handler: getMe },

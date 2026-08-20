@@ -30,7 +30,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import type {
-  CsvExportEnvelope,
+  CsvExport,
   DeletionScope,
   EnrollmentTokenIssued,
   MonitoringConfig,
@@ -81,19 +81,19 @@ export async function screenshotUrl(
 // ---------------------------------------------------------------------------
 
 /**
- * The payroll CSV, as a base64 envelope the browser turns into a file.
+ * The payroll CSV.
  *
- * The envelope is not a design choice made here: `backend/src/shared/http.ts` serialises every
- * response body with `JSON.stringify`, so a raw `text/csv` body cannot travel through the shared
- * wrapper. A real `text/csv` response would need a raw-response branch in its `toProxyResult`; until
- * then the bytes come back base64-encoded and the download is assembled from a Blob client-side,
- * which keeps the BOM and the CRLF line endings byte-exact.
+ * A real `text/csv` body now — `backend/src/shared/http.ts` grew a raw-response branch, so the
+ * base64-in-JSON envelope this used to return is gone. The bytes still reach the browser through the
+ * action rather than by a direct link, because the API needs a bearer token the browser never holds:
+ * a plain `<a href>` to the export would be unauthenticated. The download itself is assembled from a
+ * Blob client-side, which is also what keeps the byte-order mark and the CRLF line endings intact.
  */
 export async function exportCsv(
   from: string,
   to: string,
   employeeId: string | null,
-): Promise<ActionResult<CsvExportEnvelope>> {
+): Promise<ActionResult<CsvExport>> {
   return attempt('The export did not run. Try a shorter date range.', () =>
     fetchTimesheetExport(from, to, employeeId ?? undefined),
   );

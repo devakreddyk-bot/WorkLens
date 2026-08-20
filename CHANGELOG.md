@@ -107,6 +107,12 @@ was silent — nothing on screen was wrong.
   the totals column beside it said "5m".
 - **An invalid IANA timezone crashed every page drawing a day-band**, rather than
   degrading to no mark. The value comes from deployer-populated data.
+- **The payroll export claimed to be JSON.** It returned the CSV base64-encoded
+  inside a JSON envelope, because the shared response wrapper serialised every
+  body with `JSON.stringify`. The bytes were correct and the dashboard
+  reassembled them, so nothing looked broken — while any other client asking for
+  a spreadsheet got an object, and `Content-Type` said `application/json` for a
+  file that was not. It is now a real `text/csv` download.
 - **`make env-dashboard` omitted a variable the dashboard requires**
   (`NEXT_PUBLIC_APP_URL`) and **`make env-backend` pointed `DB_SSL_CA_PATH` at a
   file that does not exist**, so following the documented setup produced a
@@ -124,10 +130,6 @@ Stated plainly, because each is something a reader might reasonably expect:
   bounded by it — so the real feature would need to be asynchronous.
 - **A rule-preview endpoint.** An owner cannot see what a project rule would
   match before saving it.
-- **`text/csv` responses.** The CSV arrives base64-encoded inside a JSON
-  envelope, because the shared response wrapper serialises every body with
-  `JSON.stringify`. The bytes are exact; the envelope is a wart.
-
 ### Unverified
 
 - **Nothing has been deployed to AWS.** `terraform validate` passes, the schema

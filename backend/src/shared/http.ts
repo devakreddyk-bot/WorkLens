@@ -102,6 +102,31 @@ export interface JsonResponse {
   headers?: Record<string, string>;
 }
 
+/**
+ * A response whose body is already the bytes to send.
+ *
+ * Everything else here is serialised with `JSON.stringify`, which is correct for an API that speaks
+ * JSON and wrong for the one endpoint that does not. `GET /v1/reports/export` produces a CSV, and
+ * before this existed it had to hand back base64 inside a JSON envelope for the dashboard to
+ * reassemble — the bytes survived, but any other consumer got a JSON object where it asked for a
+ * spreadsheet, and `Content-Type` lied about what it was.
+ *
+ * Discriminated by a literal `kind` rather than by probing for a `body` shape, because
+ * `JsonResponse.body` is `unknown` and an object that happened to carry the wrong key would be
+ * silently misrouted.
+ */
+export interface RawResponse {
+  kind: 'raw';
+  status: number;
+  /** The body exactly as it should be sent. */
+  body: string;
+  /** Sent as `Content-Type`. Include the charset. */
+  contentType: string;
+  headers?: Record<string, string>;
+}
+
+export type HandlerResponse = JsonResponse | RawResponse;
+
 export function json(status: number, body: unknown, headers: Record<string, string> = {}): JsonResponse {
   return { status, body, headers };
 }
@@ -110,7 +135,58 @@ export const ok = (body: unknown): JsonResponse => json(200, body);
 export const created = (body: unknown): JsonResponse => json(201, body);
 export const noContent = (): JsonResponse => json(204, null);
 
-function toProxyResult(response: JsonResponse): APIGatewayProxyResult {
+/**
+ * A response sent verbatim.
+ *
+ * Returned as a UTF-8 string with `isBase64Encoded` absent, which is what `binary_media_types = []`
+ * on the REST API requires: API Gateway encodes the string as UTF-8 and passes it through. A
+ * byte-order mark in `body` is a `U+FEFF` character here and arrives as `EF BB BF`, which is what
+ * makes Excel read the CSV as UTF-8 rather than as the machine's local codepage.
+ *
+ * Sending it base64 with `isBase64Encoded: true` would need `text/csv` added to
+ * `binary_media_types`; without that, API Gateway hands the client the base64 itself.
+ */
+export function raw(
+  status: number,
+  body: string,
+  contentType: string,
+  headers: Record<string, string> = {},
+): RawResponse {
+  return { kind: 'raw', status, body, contentType, headers };
+}
+
+/** A downloadable file: `raw`, plus the disposition that makes a browser save it. */
+export function attachment(body: string, contentType: string, filename: string): RawResponse {
+  // The filename is quoted and stripped of anything that could terminate the quoting or inject a
+  // second header directive. Every caller currently builds it from a UUID and two ISO dates, but a
+  // header value assembled from data is worth constraining at the point it becomes a header.
+  const safe = filename.replace(/[^\w.@ -]/g, '_');
+  return raw(200, body, contentType, {
+    'content-disposition': `attachment; filename="${safe}"`,
+  });
+}
+
+function isRaw(response: HandlerResponse): response is RawResponse {
+  return 'kind' in response && response.kind === 'raw';
+}
+
+function toProxyResult(response: HandlerResponse): APIGatewayProxyResult {
+  if (isRaw(response)) {
+    return {
+      statusCode: response.status,
+      headers: {
+        ...SECURITY_HEADERS,
+        // Lower-case, to *replace* the `content-type` in SECURITY_HEADERS rather than sit beside it.
+        // HTTP header names are case-insensitive but a JavaScript object's keys are not, so
+        // `Content-Type` here would have produced a result carrying both `application/json` and
+        // `text/csv` and left the choice to whatever read it first.
+        'content-type': response.contentType,
+        ...(response.headers ?? {}),
+      },
+      body: response.body,
+    };
+  }
+
   return {
     statusCode: response.status,
     headers: { ...SECURITY_HEADERS, ...(response.headers ?? {}) },
@@ -118,7 +194,7 @@ function toProxyResult(response: JsonResponse): APIGatewayProxyResult {
   };
 }
 
-export type Handler = (ctx: RequestContext, event: ApiEvent) => Promise<JsonResponse>;
+export type Handler = (ctx: RequestContext, event: ApiEvent) => Promise<HandlerResponse>;
 
 /**
  * Wraps a handler with request context, logging and error mapping.

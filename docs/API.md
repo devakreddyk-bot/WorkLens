@@ -294,11 +294,15 @@ The payroll CSV. Two things to know:
 - **`format=pdf` is rejected with a 400 that says why.** PDF was planned as a client-side render;
   it is not implemented in any tier. The 400 is deliberate — a caller learns the answer rather than
   guessing from a 501 whether it is coming.
-- **The CSV arrives base64-encoded inside a JSON envelope, not as `text/csv`.** This is a wart, not
-  a design: `backend/src/shared/http.ts` serialises every response body with `JSON.stringify`, so a
-  raw `text/csv` body is not expressible through the shared wrapper. Base64 keeps the byte-order mark
-  and the CRLF line endings exact, and the dashboard reassembles the file client-side. A real
-  `text/csv` response needs a raw-response branch in that wrapper's `toProxyResult`.
+- **The response is a real `text/csv` download**, with `Content-Disposition: attachment` and a
+  filename derived from the range and the employee scope. It begins with a UTF-8 byte-order mark and
+  uses CRLF line endings, which is what Excel needs to open it without mangling an accented name.
+
+  It used to be base64 inside a JSON envelope, because `backend/src/shared/http.ts` serialised every
+  body with `JSON.stringify`. That wrapper now has a raw branch (`raw` and `attachment`), so a client
+  other than this dashboard gets a spreadsheet when it asks for one, and `Content-Type` no longer
+  claims `application/json` for a file that is not. The security headers still apply — the raw branch
+  overrides exactly one of them.
 
 The CSV itself is generated over keyset-paginated pages, so the Lambda holds one page and one 64 KB
 chunk regardless of how long the range is.

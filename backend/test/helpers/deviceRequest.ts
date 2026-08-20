@@ -150,7 +150,10 @@ export function signedEvent(init: SignedEventInit): ApiEvent {
 export interface HandlerResponse {
   statusCode: number;
   headers: Record<string, string>;
+  /** The parsed JSON body, or `{}` when the response was not JSON. See `text` for those. */
   body: Record<string, unknown>;
+  /** The body exactly as the handler produced it, whatever its content type. */
+  text: string;
 }
 
 /** Invokes a wrapped handler and decodes the proxy result. */
@@ -167,11 +170,19 @@ export async function invoke(
   for (const [key, value] of Object.entries(result.headers ?? {})) {
     headers[key.toLowerCase()] = String(value);
   }
-  return {
-    statusCode: result.statusCode,
-    headers,
-    body: result.body === '' ? {} : (JSON.parse(result.body) as Record<string, unknown>),
-  };
+  // Most responses are JSON, and asserting on a parsed object is what nearly every test wants. One
+  // endpoint is not: `GET /v1/reports/export` returns a real `text/csv` body, so parsing
+  // unconditionally would throw on the byte-order mark before the test could assert anything. `text`
+  // is always the raw body; `body` is the parse when there was one.
+  let body: Record<string, unknown> = {};
+  if (result.body !== '' && (headers['content-type'] ?? '').includes('json')) {
+    body = JSON.parse(result.body) as Record<string, unknown>;
+  } else if (result.body !== '' && headers['content-type'] === undefined) {
+    // No content type at all means a handler built the result by hand, which the older tests do.
+    body = JSON.parse(result.body) as Record<string, unknown>;
+  }
+
+  return { statusCode: result.statusCode, headers, body, text: result.body };
 }
 
 /** The `error` object from a failed response, narrowed for assertions. */

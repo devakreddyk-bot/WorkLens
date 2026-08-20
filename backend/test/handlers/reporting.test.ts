@@ -507,7 +507,9 @@ describe('GET /v1/reports/export', () => {
     ]);
   }
 
-  async function exportCsv(fullName: string): Promise<{ status: number; csv: string }> {
+  async function exportCsv(
+    fullName: string,
+  ): Promise<{ status: number; csv: string; headers: Record<string, string> }> {
     mockExportRows(fullName);
     const response = await invoke(
       handler,
@@ -516,11 +518,9 @@ describe('GET /v1/reports/export', () => {
         query: { format: 'csv', from: '2026-08-01', to: '2026-08-17' },
       }),
     );
-    const body = response.body as { content?: string };
-    return {
-      status: response.statusCode,
-      csv: Buffer.from(body.content ?? '', 'base64').toString('utf8'),
-    };
+    // The body *is* the CSV. It used to be base64 inside a JSON envelope, which the dashboard had to
+    // reassemble; `src/shared/http.ts` grew a raw-response branch and this is now a real download.
+    return { status: response.statusCode, csv: response.text, headers: response.headers };
   }
 
   it('starts with a UTF-8 BOM, so Excel does not mangle an accented name', async () => {
@@ -531,6 +531,40 @@ describe('GET /v1/reports/export', () => {
     expect(csv).toContain('Kavyā Sundararājan');
     // RFC 4180 line endings, which is also what Excel wants.
     expect(csv.includes('\r\n')).toBe(true);
+  });
+
+  it('is served as a real text/csv download, not as JSON', async () => {
+    const { headers, csv } = await exportCsv('Kavyā Sundararājan');
+
+    // One content-type, and it is the right one. The raw branch writes a lower-case `content-type`
+    // specifically to replace the `application/json` in SECURITY_HEADERS rather than sit beside it;
+    // an object with both `Content-Type` and `content-type` would leave the choice to whatever read
+    // it first.
+    expect(headers['content-type']).toBe('text/csv; charset=utf-8');
+    expect(Object.keys(headers).filter((k) => k.toLowerCase() === 'content-type')).toHaveLength(1);
+
+    // Named, so a browser saves it rather than rendering it.
+    expect(headers['content-disposition']).toMatch(
+      /^attachment; filename="worklens-timesheets-2026-08-01_2026-08-17.csv"$/,
+    );
+
+    // And it is not JSON. Asserted because the failure this replaced was silent: the bytes were
+    // correct inside an envelope, so nothing looked broken while every non-dashboard client got an
+    // object where it asked for a spreadsheet.
+    expect(() => {
+      JSON.parse(csv);
+    }).toThrow();
+    expect(csv).not.toContain('"encoding":');
+  });
+
+  it('keeps the security headers on a raw response', async () => {
+    // The raw branch spreads SECURITY_HEADERS first and overrides one key. A branch that built its
+    // headers from scratch would silently drop nosniff and the rest on the one endpoint that returns
+    // a file, which is the endpoint where sniffing matters most.
+    const { headers } = await exportCsv('Kavyā Sundararājan');
+    expect(headers['x-content-type-options']).toBe('nosniff');
+    expect(headers['cache-control']).toBe('no-store');
+    expect(headers['strict-transport-security']).toContain('max-age=');
   });
 
   it('neutralises a name that a spreadsheet would evaluate as a formula', async () => {

@@ -109,7 +109,11 @@ function buildUrl(path: string, query: RequestOptions['query']): string {
  * caller — a page that knows a 404 means "no timesheet for that day" can say so better than a generic
  * handler could.
  */
-export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function requestRaw(
+  path: string,
+  options: RequestOptions,
+  accept: string,
+): Promise<{ response: Response; text: string }> {
   const token = await getAccessToken();
   if (token === null) {
     redirect('/login');
@@ -120,7 +124,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
-    Accept: 'application/json',
+    Accept: accept,
   };
   if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
@@ -150,11 +154,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     redirect('/login?reason=expired');
   }
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  const text = await response.text();
+  const text = response.status === 204 ? '' : await response.text();
 
   if (!response.ok) {
     const body = parseErrorBody(response.status, text);
@@ -167,6 +167,18 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     throw error;
   }
 
+  return { response, text };
+}
+
+/**
+ * A JSON request. Everything except the export uses this.
+ *
+ * A 401 redirects to login: the access token has expired or been revoked, and there is nothing the
+ * page can do but ask the person to sign in again. Everything else becomes an `ApiError`.
+ */
+export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { response, text } = await requestRaw(path, options, 'application/json');
+
   if (text === '') {
     return undefined as T;
   }
@@ -176,6 +188,50 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   } catch (cause) {
     throw new Error(`The API returned a response that is not JSON (HTTP ${response.status}).`, { cause });
   }
+}
+
+/**
+ * A request whose response is a file rather than JSON.
+ *
+ * Only `GET /v1/reports/export` uses this. It shares the whole transport with `apiRequest` — token,
+ * URL building, the 401 redirect, the MFA redirect and the error envelope — and differs only in not
+ * parsing the body, because the body is a CSV.
+ *
+ * The filename comes from `Content-Disposition` rather than being rebuilt here. The server already
+ * decides it from the range and the employee scope, and two places computing a filename is two
+ * places to disagree about which day a spreadsheet covers.
+ */
+export async function apiRequestFile(
+  path: string,
+  options: RequestOptions = {},
+): Promise<{ content: string; filename: string; contentType: string }> {
+  const { response, text } = await requestRaw(path, options, 'text/csv');
+
+  return {
+    content: text,
+    filename: filenameFromDisposition(response.headers.get('content-disposition')),
+    contentType: response.headers.get('content-type') ?? 'application/octet-stream',
+  };
+}
+
+/**
+ * The filename from a `Content-Disposition` header.
+ *
+ * Falls back to a generic name rather than throwing: a missing header is a reason to give the file a
+ * duller name, not a reason to lose an export somebody waited for. The value is stripped of path
+ * separators — it becomes a download filename, and a server that sent `../` should not get to choose
+ * where a browser writes.
+ */
+function filenameFromDisposition(header: string | null): string {
+  const fallback = 'worklens-timesheets.csv';
+  if (header === null) return fallback;
+
+  const match = /filename\s*=\s*"([^"]+)"/i.exec(header) ?? /filename\s*=\s*([^;]+)/i.exec(header);
+  const raw = match?.[1]?.trim();
+  if (raw === undefined || raw === '') return fallback;
+
+  const cleaned = raw.replace(/[/\\]/g, '_').replace(/^\.+/, '');
+  return cleaned === '' ? fallback : cleaned;
 }
 
 /**
@@ -579,21 +635,18 @@ export interface AuditLogResponse {
 }
 
 /**
- * The CSV export, as it actually arrives.
+ * The CSV export, as it arrives.
  *
- * `backend/src/shared/http.ts` serialises every response body with `JSON.stringify`, so a raw
- * `text/csv` body is not expressible through the shared wrapper — the file comes back base64-encoded
- * inside this envelope and the dashboard assembles the download from a Blob. A real `text/csv`
- * response would need a raw-response branch in `toProxyResult`; until then this is the contract, and
- * the base64 is what keeps the BOM and CRLF line endings byte-exact through a JSON transport.
+ * A real `text/csv` body with a `Content-Disposition` filename. It used to be base64 inside a JSON
+ * envelope, because the backend's shared response wrapper serialised every body with
+ * `JSON.stringify`; that wrapper now has a raw branch (`raw`/`attachment` in
+ * `backend/src/shared/http.ts`), so this is a plain download and the envelope is gone.
  */
-export interface CsvExportEnvelope {
-  filename: string;
-  content_type: string;
-  encoding: 'base64';
-  byte_count: number;
-  row_count: number;
+export interface CsvExport {
+  /** The file's bytes as text, byte-order mark and CRLF line endings included. */
   content: string;
+  filename: string;
+  contentType: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -868,8 +921,8 @@ export function fetchTimesheetExport(
   from: string,
   to: string,
   employeeId?: string,
-): Promise<CsvExportEnvelope> {
-  return apiRequest<CsvExportEnvelope>('/reports/export', {
+): Promise<CsvExport> {
+  return apiRequestFile('/reports/export', {
     query: { format: 'csv', from, to, employee_id: employeeId },
   });
 }
