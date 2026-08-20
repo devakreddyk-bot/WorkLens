@@ -879,16 +879,14 @@ dashboard_origins = ["https://worklens.example.com"]
 The `api` module's one-origin validation helps here — a list of two fails at plan time — but a list of
 one that happens to be `localhost` passes cleanly.
 
-**3. `SECURITY_CONTACT_PLACEHOLDER` in `SECURITY.md`.** The vulnerability-reporting address is still a
-marker. Both files document a working fallback (a GitHub private security advisory) in the meantime,
-but a security policy whose contact is a placeholder is a policy that will be read by somebody who
-then does nothing. Replace it with a real, monitored address.
+**3. The security and conduct contacts are filled in** — both `SECURITY.md` and
+`CODE_OF_CONDUCT.md` now name a real address, and neither carries a placeholder. They are currently
+the *same* address, because the project has one maintainer; `CODE_OF_CONDUCT.md` says so explicitly
+rather than leaving a reporter to work out that a conduct complaint lands in the same inbox as
+everything else. Split them when there is more than one person to split them between.
 
-**4. `CONDUCT_CONTACT_PLACEHOLDER` in `CODE_OF_CONDUCT.md`.** The same problem with a different
-audience: an enforcement contact nobody can reach makes the document decorative.
-
-Both markers are referenced in `docs/RESUME.md` as known outstanding items. Neither is checked by CI,
-so nothing will fail if they are left in.
+Neither file is checked by CI, so nothing fails if a future edit reintroduces a placeholder. The
+`check-readme` gate covers the README's responsible-use section only.
 
 ---
 

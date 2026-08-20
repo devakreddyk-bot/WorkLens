@@ -60,21 +60,16 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behaviour may be
 reported to the community leaders responsible for enforcement at
-**`CONDUCT_CONTACT_PLACEHOLDER`**.
+**devakreddyk@stelther.com.au**.
 
-> **Maintainer action required — this placeholder must be filled in before the
-> repository is made public.**
->
-> Replace `CONDUCT_CONTACT_PLACEHOLDER` with a real, monitored contact — an
-> email address such as `conduct@<your-domain>`, or an alias that reaches the
-> maintainers. It should be a channel the maintainers actually read, and it
-> should be distinct from the security reporting channel in
-> [SECURITY.md](SECURITY.md): the two require different handling and often
-> different people. A Code of Conduct with no reachable contact cannot be
-> enforced, and publishing one that cannot be enforced is worse than
-> publishing none. Until it is filled in, report conduct concerns by opening a
-> private security advisory or by contacting a maintainer directly through
-> their GitHub profile.
+> This is currently the same address as the security contact in
+> [SECURITY.md](SECURITY.md), because this project has one maintainer. That is
+> worth naming rather than leaving for you to notice: a conduct report and a
+> vulnerability report want different handling and, on a larger project,
+> different people. If that becomes a problem — if you are reporting conduct
+> and would rather it did not arrive in the same inbox as everything else — say
+> so in the first line and it will be handled separately, or contact a
+> maintainer directly through their GitHub profile.
 
 All complaints will be reviewed and investigated promptly and fairly.
 

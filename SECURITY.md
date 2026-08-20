@@ -17,17 +17,18 @@ Report it privately, by either route:
    **Security → Advisories → Report a vulnerability**. This creates a private
    thread visible only to you and the maintainers, and it lets us issue a
    patched release and a CVE from the same place.
-2. **Email** — `SECURITY_CONTACT_PLACEHOLDER`.
+2. **Email** — devakreddyk@stelther.com.au.
 
-> **Maintainer action required — this placeholder must be filled in before the
-> repository is made public.**
+> A note on which route to pick. The advisory route is preferred and not merely
+> listed first: it gives us a private thread, a patched release and a CVE from
+> one place, and it does not put the details of an unpatched vulnerability into
+> anybody's mailbox. Use the email if you would rather not have a GitHub
+> account, or if the advisory form is not working for you.
 >
-> Replace `SECURITY_CONTACT_PLACEHOLDER` with a real, monitored address such as
-> `security@<your-domain>`, and consider publishing a PGP key alongside it for
-> reporters who want to encrypt. Keep it separate from the Code of Conduct
-> contact in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Until it is filled in,
-> use the GitHub private security advisory route, which needs no email address
-> and is the preferred channel regardless.
+> There is no PGP key yet. If you have something whose *contents* need
+> encrypting rather than just a private channel, open an advisory instead —
+> that thread is already private — or say so by email and we will arrange a key
+> before you send anything sensitive.
 
 ### What to include
 
