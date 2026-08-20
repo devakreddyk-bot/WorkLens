@@ -112,7 +112,7 @@ lint: ## Lint every component without modifying files
 	else echo "skipping: dashboard/ not yet present"; fi
 	@$(MAKE) --no-print-directory tf-fmt-check
 
-test: agent-test backend-test ## Run every test suite
+test: agent-test backend-test dashboard-test ## Run every test suite
 
 build: agent-windows backend-build dashboard-build ## Build every component
 
@@ -173,6 +173,15 @@ migrate: ## Apply forward-only SQL migrations via backend/scripts/migrate.ts
 dashboard-build: ## Produce a production build of the dashboard
 	@if [ ! -f dashboard/package.json ]; then echo "skipping: dashboard/ not yet present"; else \
 		cd dashboard && npx --no-install next build; \
+	fi
+
+dashboard-test: ## Run the dashboard test suite with coverage
+	@if [ ! -f dashboard/package.json ]; then \
+		echo "skipping: dashboard/ not yet present"; \
+	elif [ -z "$$(find dashboard/test -name '*.test.ts' 2>/dev/null | head -1)" ]; then \
+		echo "skipping: no *.test.ts files under dashboard/test/ yet"; \
+	else \
+		cd dashboard && npx --no-install vitest run --coverage; \
 	fi
 
 dashboard-dev: ## Run the dashboard development server on http://localhost:3000
@@ -289,6 +298,6 @@ check-routes: ## Fail if the dashboard calls an endpoint the backend does not se
 .PHONY: env-backend env-dashboard help bootstrap fmt lint test build ci clean \
 	agent-windows agent-test \
 	backend-build backend-test migrate \
-	dashboard-build dashboard-dev \
+	dashboard-build dashboard-test dashboard-dev \
 	tf-fmt tf-fmt-check tf-validate tf-plan tf-apply \
 	check-privacy check-iam check-readme check-functions check-migrations check-routes

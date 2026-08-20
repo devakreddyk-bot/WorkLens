@@ -32,33 +32,34 @@
  * only totals it renders a single span between first and last activity, proportioned by the
  * active/idle split. Given `segments` (from the activity endpoint, which does return spans) it draws
  * them individually. `resolution` says which happened, and the caller can label it.
+ *
+ * # Where the arithmetic lives
+ *
+ * Not here. `@/lib/band` holds the geometry — the local-midnight conversion and the span layout —
+ * because a `'use client'` module's internals cannot be imported, which made the highest-risk code
+ * in the dashboard the only code that could not be tested without rendering React. This file is now
+ * what a component should be: it decides what the marks mean and how they are announced to a screen
+ * reader, and it asks `band.ts` where they go.
  */
 
 'use client';
 
 import { useId } from 'react';
 
+import {
+  buildSpans,
+  minutesFromMidnight,
+  percentOfDay,
+  type BandInput,
+  type DaySegment,
+} from '@/lib/band';
 import { formatDuration, formatLocalTime } from '@/lib/format';
 
-/** One recorded span within a day. Times are instants; the band converts them to local offsets. */
-export interface DaySegment {
-  startedAt: string;
-  endedAt: string;
-  idle: boolean;
-}
+export type { DaySegment };
 
-export interface DayBandProps {
+export interface DayBandProps extends BandInput {
   /** The calendar date this band represents, `YYYY-MM-DD` in the employee's timezone. */
   workDate: string;
-  /** IANA timezone the day is measured in. The employee's, never the viewer's. */
-  timezone: string;
-  activeSeconds: number;
-  idleSeconds: number;
-  /** ISO instants, or null on a day with no activity. */
-  firstActivityAt?: string | null;
-  lastActivityAt?: string | null;
-  /** Individual spans, when the caller has them. Absent means totals-only. */
-  segments?: readonly DaySegment[];
   /** The configured work-hours window, as minutes from local midnight. Drawn as faint ticks. */
   workHoursStartMinutes?: number | null;
   workHoursEndMinutes?: number | null;
@@ -67,89 +68,6 @@ export interface DayBandProps {
   /** Renders the 06/12/18 hour scale beneath. Once per table, not once per row. */
   showScale?: boolean;
   className?: string;
-}
-
-const MINUTES_PER_DAY = 24 * 60;
-
-/**
- * Minutes from local midnight for an instant, in a given zone.
- *
- * Uses `Intl` rather than `getHours()`, which would silently use the *viewer's* timezone — so a
- * manager in Melbourne would see an Indian employee's 09:00 start drawn at 13:30. That is the single
- * most likely bug in this component, and it produces a plausible-looking wrong picture rather than an
- * error.
- */
-function minutesFromMidnight(iso: string, timezone: string): number | null {
-  const instant = new Date(iso);
-  if (Number.isNaN(instant.getTime())) return null;
-
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: timezone,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(instant);
-
-  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0');
-  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? '0');
-  if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
-
-  return hour * 60 + minute;
-}
-
-function percent(minutes: number): string {
-  return `${((minutes / MINUTES_PER_DAY) * 100).toFixed(4)}%`;
-}
-
-interface Span {
-  fromMinutes: number;
-  toMinutes: number;
-  idle: boolean;
-}
-
-/**
- * Works out what to draw.
- *
- * With segments, each becomes a span. Without them, the totals are laid out between first and last
- * activity: active first, then idle. That ordering is a simplification and is signalled by
- * `resolution` so the caller can say so rather than implying a precision the data does not have.
- */
-function buildSpans(props: DayBandProps): { spans: Span[]; resolution: 'segments' | 'totals' | 'empty' } {
-  const { timezone, segments, firstActivityAt, lastActivityAt, activeSeconds, idleSeconds } = props;
-
-  if (segments !== undefined && segments.length > 0) {
-    const spans: Span[] = [];
-    for (const segment of segments) {
-      const from = minutesFromMidnight(segment.startedAt, timezone);
-      const to = minutesFromMidnight(segment.endedAt, timezone);
-      if (from === null || to === null) continue;
-      // A span ending after local midnight wraps to a small number. Clamping to the day's end keeps
-      // it visible instead of drawing a negative-width bar; the following day carries its remainder,
-      // because the aggregation splits events at the boundary.
-      spans.push({ fromMinutes: from, toMinutes: to <= from ? MINUTES_PER_DAY : to, idle: segment.idle });
-    }
-    if (spans.length > 0) return { spans, resolution: 'segments' };
-  }
-
-  if (firstActivityAt == null || lastActivityAt == null || activeSeconds + idleSeconds === 0) {
-    return { spans: [], resolution: 'empty' };
-  }
-
-  const from = minutesFromMidnight(firstActivityAt, timezone);
-  const to = minutesFromMidnight(lastActivityAt, timezone);
-  if (from === null || to === null) return { spans: [], resolution: 'empty' };
-
-  const end = to <= from ? MINUTES_PER_DAY : to;
-  const width = end - from;
-  const recorded = activeSeconds + idleSeconds;
-  const activeWidth = width * (activeSeconds / recorded);
-
-  const spans: Span[] = [{ fromMinutes: from, toMinutes: from + activeWidth, idle: false }];
-  if (idleSeconds > 0) {
-    spans.push({ fromMinutes: from + activeWidth, toMinutes: end, idle: true });
-  }
-
-  return { spans, resolution: 'totals' };
 }
 
 export function DayBand(props: DayBandProps): React.ReactElement {
@@ -203,14 +121,14 @@ export function DayBand(props: DayBandProps): React.ReactElement {
           <span
             aria-hidden="true"
             className="absolute top-0 bottom-0 w-px bg-rule-strong opacity-60"
-            style={{ left: percent(workHoursStartMinutes) }}
+            style={{ left: percentOfDay(workHoursStartMinutes) }}
           />
         )}
         {workHoursEndMinutes != null && (
           <span
             aria-hidden="true"
             className="absolute top-0 bottom-0 w-px bg-rule-strong opacity-60"
-            style={{ left: percent(workHoursEndMinutes) }}
+            style={{ left: percentOfDay(workHoursEndMinutes) }}
           />
         )}
 
@@ -227,8 +145,8 @@ export function DayBand(props: DayBandProps): React.ReactElement {
             aria-hidden="true"
             className={span.idle ? 'absolute top-0 bottom-0 bg-idle' : 'absolute top-0 bottom-0 bg-active'}
             style={{
-              left: percent(span.fromMinutes),
-              width: percent(Math.max(span.toMinutes - span.fromMinutes, 1)),
+              left: percentOfDay(span.fromMinutes),
+              width: percentOfDay(Math.max(span.toMinutes - span.fromMinutes, 1)),
             }}
           />
         ))}
@@ -259,7 +177,7 @@ export function DayBand(props: DayBandProps): React.ReactElement {
             <span
               key={hour}
               className="figure absolute -translate-x-1/2 text-[10px] text-ink-faint"
-              style={{ left: percent(hour * 60) }}
+              style={{ left: percentOfDay(hour * 60) }}
             >
               {String(hour).padStart(2, '0')}
             </span>
@@ -278,7 +196,7 @@ function Cap({ position }: { position: number | null }): React.ReactElement | nu
     <span
       aria-hidden="true"
       className="absolute -top-1 -bottom-1 w-[1.5px] bg-ink"
-      style={{ left: percent(position) }}
+      style={{ left: percentOfDay(position) }}
     />
   );
 }

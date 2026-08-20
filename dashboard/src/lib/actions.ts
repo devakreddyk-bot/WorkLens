@@ -39,7 +39,6 @@ import type {
   ScreenshotUrlResponse,
 } from './api';
 import {
-  ApiError,
   createDeletionRequest,
   createEnrollmentToken,
   createProject,
@@ -55,77 +54,8 @@ import {
   putMonitoringConfig,
   revokeDevice,
 } from './api';
-import type { ActionError, ActionResult, FormState } from './action-result';
-
-// ---------------------------------------------------------------------------
-// Failure handling
-// ---------------------------------------------------------------------------
-
-/**
- * Whether an error is Next's control flow rather than a failure.
- *
- * `redirect()` and `notFound()` work by throwing an object with a `digest` the framework recognises.
- * Swallowing one turns "your session expired, sign in again" into "something went wrong", so it is
- * checked for by shape and rethrown. Matched on the string rather than imported, because the helper
- * that does this lives in Next's internals and has moved between versions.
- */
-function isFrameworkSignal(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null || !('digest' in error)) return false;
-  const digest: unknown = (error as { digest?: unknown }).digest;
-  return typeof digest === 'string' && (digest.startsWith('NEXT_REDIRECT') || digest === 'NEXT_NOT_FOUND');
-}
-
-/**
- * Turns a failure into something worth reading.
- *
- * An `ApiError` already carries a message written for a person and, for a validation failure, the
- * field that caused it — so it is passed through rather than replaced with a generic sentence. The
- * request id comes with it: it is the same id in the deployment's logs, which is the one thing support
- * actually needs.
- */
-function toActionError(error: unknown, fallback: string): ActionError {
-  if (error instanceof ApiError) {
-    return {
-      status: 'error',
-      message: error.message,
-      fields: error.fieldErrors(),
-      requestId: error.requestId === 'unknown' ? null : error.requestId,
-    };
-  }
-  if (error instanceof Error) {
-    return { status: 'error', message: error.message, fields: {}, requestId: null };
-  }
-  return { status: 'error', message: fallback, fields: {}, requestId: null };
-}
-
-async function attempt<T>(fallback: string, run: () => Promise<T>): Promise<ActionResult<T>> {
-  try {
-    return { status: 'ok', value: await run() };
-  } catch (error) {
-    if (isFrameworkSignal(error)) throw error;
-    return toActionError(error, fallback);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Reading a form
-// ---------------------------------------------------------------------------
-
-function text(form: FormData, name: string): string {
-  const value = form.get(name);
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-/** A field the caller may leave blank, where blank means "not set" rather than "empty string". */
-function optionalText(form: FormData, name: string): string | null {
-  const value = text(form, name);
-  return value === '' ? null : value;
-}
-
-function integer(form: FormData, name: string, fallback: number): number {
-  const parsed = Number.parseInt(text(form, name), 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
+import type { ActionResult, FormState } from './action-result';
+import { attempt, integer, optionalText, text } from './action-support';
 
 // ---------------------------------------------------------------------------
 // Screenshots

@@ -214,6 +214,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Test
+        run: npm run coverage
+
       # Deliberately built with no NEXT_PUBLIC_* values. The dashboard reads its configuration
       # lazily (see dashboard/src/lib/env.ts), so a build without it verifies types, lint and the
       # compile without needing a deployed stack or any secret in CI.

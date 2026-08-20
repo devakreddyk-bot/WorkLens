@@ -36,16 +36,38 @@ export function formatLocalTime(iso: string | null, timezone: string): string {
   }).format(instant);
 }
 
-/** A calendar date as `Fri 17 Aug`, for column headings and day pickers. */
+/**
+ * A calendar date as `Thu 20 Aug`, for column headings and day pickers.
+ *
+ * Assembled from parts rather than taken from `format()`, which inserts a comma after the weekday —
+ * `en-AU` yields "Thu, 20 Aug". In a week's worth of column headings that comma is four characters of
+ * punctuation carrying no information, and the register's whole visual argument is that it is terse.
+ *
+ * Building the string deliberately also means ICU's punctuation conventions cannot change the output
+ * from under this. That is not hypothetical: the mismatch between this function's documented format
+ * and what it actually returned is what prompted the rewrite.
+ */
 export function formatShortDate(workDate: string): string {
   const instant = new Date(`${workDate}T00:00:00Z`);
   if (Number.isNaN(instant.getTime())) return workDate;
-  return new Intl.DateTimeFormat('en-AU', {
+
+  const parts = new Intl.DateTimeFormat('en-AU', {
     timeZone: 'UTC',
     weekday: 'short',
     day: 'numeric',
     month: 'short',
-  }).format(instant);
+  }).formatToParts(instant);
+
+  const value = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === type)?.value ?? '';
+
+  const weekday = value('weekday');
+  const day = value('day');
+  const month = value('month');
+  // Falls back to the locale's own rendering if any part is missing, rather than returning a string
+  // with a hole in it.
+  if (weekday === '' || day === '' || month === '') return parts.map((part) => part.value).join('');
+  return `${weekday} ${day} ${month}`;
 }
 
 /** A calendar date as `Friday 17 August 2026`, for page titles. */

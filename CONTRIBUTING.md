@@ -168,6 +168,7 @@ From the repository root:
 | `make test` | Every test suite that exists. |
 | `make agent-test` | `go test ./... -race -count=1` in `agent/`. |
 | `make backend-test` | `vitest run --coverage` in `backend/`. |
+| `make dashboard-test` | `vitest run --coverage` in `dashboard/`. |
 | `make lint` | gofmt check, `go vet`, `tsc --noEmit`, eslint, `terraform fmt -check`. |
 | `make check-privacy` | Forbidden capture APIs anywhere in source. |
 | `make check-iam` | Unjustified IAM resource wildcards. |

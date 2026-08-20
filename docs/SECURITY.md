@@ -287,6 +287,30 @@ Stated plainly, because a security document that only lists strengths is not use
   constructions and lets exotic ones through; deciding this in general is not tractable. The real
   defence is the server refusing to store such a pattern.
 
+### 4.1 Two dependency advisories are present and, in this configuration, unreachable
+
+`npm audit` reports three high-severity advisories in `dashboard/`, all transitive through `next`
+and all unfixed on the 15.x line — the remedy npm offers is `next@16`, a major upgrade. The
+dashboard is on 15.5.23, the newest 15.x. Rather than either ignoring this or taking a major bump
+during a hardening pass, here is why neither is reachable as the dashboard is built, and what would
+change that:
+
+| Advisory | Why it is not reachable here | What would make it reachable |
+|---|---|---|
+| `sharp` < 0.35.0 — inherited libvips CVEs (image decoding) | `next/image` is not used anywhere, and `next.config.ts` sets `images: { unoptimized: true }`. Screenshots go from the browser to S3 through a presigned URL and are rendered by a plain `<img>`; no image of anybody's screen passes through the Next.js server, so `sharp` never decodes one. | Adopting `next/image` for screenshots, or removing `unoptimized`. Then a compromised agent's uploaded image would reach libvips. |
+| `postcss` <= 8.5.22 — XSS via unescaped `</style>`, and arbitrary `.map` file disclosure via `sourceMappingURL` | PostCSS runs at build time over CSS in this repository, authored by whoever builds it. No user-supplied or runtime CSS is processed. | Processing CSS from any source other than the repository — a themable stylesheet, tenant branding, anything uploaded. |
+
+Worth being precise about what this is and is not. It is not a statement that the advisories are
+harmless: both are real, and the `sharp` one would matter a great deal in a product that resized
+uploaded images. It is a statement that the specific code paths they affect are not present. Note
+also that the configuration doing the work was chosen for a different reason — `unoptimized: true`
+is there so that images of people's screens are not proxied through the application server — which
+means it could be reverted by somebody who had no idea it was also load-bearing for this.
+
+So: `next@16` is the fix, it belongs in its own change with the build verified against it, and until
+then a reviewer reading `npm audit` should find this table rather than concluding nobody looked.
+Re-check with `npm audit` in `dashboard/` after any `next` upgrade.
+
 ---
 
 ## 5. Before deploying this

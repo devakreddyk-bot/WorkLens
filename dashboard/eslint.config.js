@@ -3,7 +3,10 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['.next/**', 'node_modules/**', 'next-env.d.ts', 'postcss.config.mjs'] },
+  // `coverage/` is generated: v8's HTML report ships its own vendored scripts, which the linter
+  // reads as source and reports on. Already gitignored; ignored here so `npm run lint` after
+  // `npm run coverage` does not fail on somebody else's code.
+  { ignores: ['.next/**', 'node_modules/**', 'coverage/**', 'next-env.d.ts', 'postcss.config.mjs'] },
 
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
