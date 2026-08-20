@@ -573,3 +573,163 @@ describe('implausible', () => {
     expect(implausible(rollup, 86_400)).toMatch(/does not equal active \+ idle/);
   });
 });
+
+/**
+ * The paths the coverage threshold on this file was set to protect, and which it turned out were
+ * not reached.
+ *
+ * `vitest.config.ts` holds `rollup.ts` to 95% statements and 90% branches on the stated grounds
+ * that "the aggregation rollup ... has no excuse for gaps". It sat at 91.7/88 from the day the
+ * threshold was written, so `npm run test:coverage` — and the backend CI job, which runs
+ * `--coverage` — had been failing since. Running the component test suites individually rather than
+ * `make ci` is what hid it.
+ *
+ * Every case below is a real behaviour, not a line-hitting exercise: a rule that cannot be trusted,
+ * a match type nothing exercised, a guard against an event that should not exist, and an invariant
+ * that says a rollup is wrong.
+ */
+describe('rule matching paths that nothing else exercises', () => {
+  const CREATED = new Date('2026-01-01T00:00:00Z');
+
+  it('categorises on url_host, not only on the executable', () => {
+    // `matchCategory` handles `app_exe` and then falls through to `url_host`. The fall-through was
+    // untested, so a browsing-heavy day could have been silently uncategorised.
+    const rules: CategoryRule[] = [
+      { id: 'r1', matchType: 'url_host', pattern: 'github.com', category: 'Development', priority: 10, createdAt: CREATED },
+    ];
+    const { rollups } = aggregate(
+      [activeEvent({ appExe: 'firefox.exe', appName: 'Firefox', urlHost: 'gist.github.com' })],
+      { timezone: KOLKATA, categoryRules: rules },
+    );
+
+    expect(rollups[0]?.categories.Development).toBe(60);
+    expect(rollups[0]?.categories[DEFAULT_CATEGORY]).toBeUndefined();
+  });
+
+  it('attributes a project on url_host and on title_contains', () => {
+    // Two of the four project match types had no test. A project rule that silently never matches
+    // is worse than one that errors: the time lands in "no project" and looks like a data gap.
+    const rules: ProjectRule[] = [
+      { id: 'p1', projectId: 'proj-web', matchType: 'url_host', pattern: 'jira.example', priority: 10, createdAt: CREATED },
+      { id: 'p2', projectId: 'proj-doc', matchType: 'title_contains', pattern: 'Quarterly report', priority: 20, createdAt: CREATED },
+    ];
+
+    const byHost = aggregate(
+      [activeEvent({ urlHost: 'jira.example', windowTitle: 'WL-14 · Jira' })],
+      { timezone: KOLKATA, projectRules: rules },
+    );
+    expect(byHost.rollups[0]?.projects['proj-web']).toBe(60);
+
+    const byTitle = aggregate(
+      [activeEvent({ urlHost: null, windowTitle: 'Quarterly report - final.docx' })],
+      { timezone: KOLKATA, projectRules: rules },
+    );
+    expect(byTitle.rollups[0]?.projects['proj-doc']).toBe(60);
+  });
+
+  it('breaks a rule tie on id when priority and creation time are identical', () => {
+    // The third sort key. Without it the winner depends on the order the database returned rows in,
+    // and re-running the same day could attribute the same minute to a different project — which
+    // makes an idempotent upsert produce a different answer on each run.
+    const same = { projectId: '', matchType: 'app_exe' as const, pattern: 'code.exe', priority: 10, createdAt: CREATED };
+    const rules: ProjectRule[] = [
+      { ...same, id: 'bbb', projectId: 'proj-b' },
+      { ...same, id: 'aaa', projectId: 'proj-a' },
+    ];
+
+    const forwards = aggregate([activeEvent()], { timezone: KOLKATA, projectRules: rules });
+    const backwards = aggregate([activeEvent()], { timezone: KOLKATA, projectRules: [...rules].reverse() });
+
+    // 'aaa' wins both times, whichever order the rules arrive in.
+    expect(forwards.rollups[0]?.projects['proj-a']).toBe(60);
+    expect(backwards.rollups[0]?.projects['proj-a']).toBe(60);
+    expect(forwards.rollups[0]?.projects['proj-b']).toBeUndefined();
+  });
+
+  it('refuses an over-long title_regex pattern instead of compiling it', () => {
+    // 400 characters is the cap. A pattern that long is not a legitimate window-title matcher, and
+    // the cost of deciding whether it backtracks catastrophically is the thing being avoided.
+    const rules: ProjectRule[] = [
+      { id: 'p-long', projectId: 'proj-x', matchType: 'title_regex', pattern: `${'a'.repeat(401)}`, priority: 10, createdAt: CREATED },
+    ];
+    const { rollups, warnings } = aggregate([activeEvent({ windowTitle: 'a'.repeat(500) })], {
+      timezone: KOLKATA,
+      projectRules: rules,
+    });
+
+    expect(warnings.disabledRegexRules).toContain('p-long');
+    expect(rollups[0]?.projects ?? {}).toEqual({});
+  });
+
+  it('disables a title_regex rule that exceeds its time budget', () => {
+    // A budget of zero makes any match exceed it, which is the only way to exercise this
+    // deterministically — a pattern slow enough to blow a real budget is by definition slow to run
+    // in a test. The rule still returns its match for the event that tripped it, and is disabled
+    // for the rest of the run: the alternative is silently dropping the attribution that was
+    // already correctly computed.
+    const rules: ProjectRule[] = [
+      { id: 'p-slow', projectId: 'proj-slow', matchType: 'title_regex', pattern: 'worklens', priority: 10, createdAt: CREATED },
+    ];
+    const { rollups, warnings } = aggregate(
+      [
+        activeEvent({ windowTitle: 'rollup.ts - worklens' }),
+        activeEvent({ capturedAt: new Date('2026-08-19T04:05:00Z'), windowTitle: 'zone.ts - worklens' }),
+      ],
+      { timezone: KOLKATA, projectRules: rules, regexBudgetMs: 0 },
+    );
+
+    expect(warnings.disabledRegexRules).toContain('p-slow');
+    // The first event matched before the rule was disabled; the second did not.
+    expect(rollups[0]?.projects['proj-slow']).toBe(60);
+  });
+
+  it('skips a title_regex rule when there is no title to match', () => {
+    // An idle event carries no window title by construction, and the database forbids one. Reaching
+    // the regex with an empty subject would spend the budget to match nothing.
+    const rules: ProjectRule[] = [
+      { id: 'p-re', projectId: 'proj-re', matchType: 'title_regex', pattern: '.*', priority: 10, createdAt: CREATED },
+    ];
+    const { rollups } = aggregate(
+      [idleEvent(), activeEvent({ windowTitle: '' })],
+      { timezone: KOLKATA, projectRules: rules },
+    );
+    expect(rollups[0]?.projects ?? {}).toEqual({});
+  });
+});
+
+describe('guards against events that should not exist', () => {
+  it('refuses an event spanning more than 64 days rather than looping', () => {
+    // `splitAcrossDays` walks a day at a time with a hard stop. The duration schema caps an event
+    // at one hour, so reaching this needs a bug or a tampered row — and the honest response to
+    // either is to fail loudly rather than allocate 64 days of "work" across a timesheet.
+    expect(() => splitAcrossDays(new Date('2026-01-01T00:00:00Z'), 90 * 86_400, KOLKATA)).toThrow(
+      /spans more than 64 days/,
+    );
+  });
+
+  it('calls a rollup implausible when a component is negative', () => {
+    // `implausible` is the last line before a wrong figure reaches a timesheet. The negative branch
+    // was untested, and negative seconds are exactly what an arithmetic error produces.
+    const base = {
+      workDate: '2026-08-19',
+      timezone: KOLKATA,
+      activeSeconds: -60,
+      idleSeconds: 120,
+      totalSeconds: 60,
+      firstActivityAt: new Date('2026-08-19T04:00:00Z'),
+      lastActivityAt: new Date('2026-08-19T05:00:00Z'),
+      screenshotCount: 0,
+      sourceEventCount: 1,
+      apps: {},
+      sites: {},
+      categories: {},
+      projects: {},
+    };
+
+    expect(implausible(base, localDayLengthSeconds('2026-08-19', KOLKATA))).toMatch(/negative seconds/);
+    expect(implausible({ ...base, idleSeconds: -1, activeSeconds: 61 }, 86_400)).toMatch(/negative seconds/);
+
+    // And the healthy case still passes, so the guard is not simply always firing.
+    expect(implausible({ ...base, activeSeconds: 60, idleSeconds: 0, totalSeconds: 60 }, 86_400)).toBeNull();
+  });
+});

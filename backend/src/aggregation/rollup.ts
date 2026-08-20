@@ -97,7 +97,16 @@ export interface DailyRollup {
 
 /** Diagnostics from a run, for the job's log. Not stored. */
 export interface RollupWarnings {
-  /** Rules disabled mid-run for exceeding the regex budget. */
+  /**
+   * `title_regex` rules that were not applied, by id.
+   *
+   * Both causes are reported: refused at compile time (pattern too long, a nested quantifier, or
+   * not a valid regex) and disabled mid-run (the match threw, or exceeded the budget). Compile-time
+   * refusals were originally silent, which meant an owner could save a project rule, have the
+   * aggregation ignore it on every run forever, and find nothing anywhere that said so — the rule
+   * looked configured and did nothing. A rule that is not being applied is exactly what the job's
+   * log is for.
+   */
   disabledRegexRules: string[];
   /** Events whose duration was clamped, with the original value. */
   clampedEvents: number;
@@ -163,13 +172,15 @@ export function aggregate(
 
   const categoryRules = sortRules(options.categoryRules ?? []);
   const projectRules = sortRules(options.projectRules ?? []);
-  const compiled = compileRegexRules(projectRules);
 
   const warnings: RollupWarnings = {
     disabledRegexRules: [],
     clampedEvents: 0,
     skippedEvents: 0,
   };
+
+  // After `warnings`, because compilation reports the rules it refuses.
+  const compiled = compileRegexRules(projectRules, warnings);
 
   const days = new Map<LocalDate, MutableRollup>();
 
@@ -426,20 +437,30 @@ interface CompiledProjectRule {
  * write, so an invalid one here means a bug or an older row — and losing a night's timesheets over
  * one bad rule would be a worse outcome than losing that rule's attribution.
  */
-function compileRegexRules(sortedRules: readonly ProjectRule[]): CompiledProjectRule[] {
+function compileRegexRules(
+  sortedRules: readonly ProjectRule[],
+  warnings: RollupWarnings,
+): CompiledProjectRule[] {
   return sortedRules.map((rule) => {
     if (rule.matchType !== 'title_regex') {
       return { rule, regex: null, disabled: false };
     }
 
-    if (rule.pattern.length > MAX_REGEX_PATTERN_LENGTH) {
+    const refuse = (): CompiledProjectRule => {
+      // Recorded, not just skipped. A rule the aggregation silently declines to apply is
+      // indistinguishable, from the dashboard, from a rule that matches nothing.
+      warnings.disabledRegexRules.push(rule.id);
       return { rule, regex: null, disabled: true };
+    };
+
+    if (rule.pattern.length > MAX_REGEX_PATTERN_LENGTH) {
+      return refuse();
     }
 
     // Refused before it can run. See NESTED_QUANTIFIER_RE: a post-hoc time budget cannot help,
     // because the first match has already taken longer than the whole job is allowed.
     if (NESTED_QUANTIFIER_RE.test(rule.pattern)) {
-      return { rule, regex: null, disabled: true };
+      return refuse();
     }
 
     try {
@@ -447,7 +468,7 @@ function compileRegexRules(sortedRules: readonly ProjectRule[]): CompiledProject
       // events happened to arrive in.
       return { rule, regex: new RegExp(rule.pattern, 'i'), disabled: false };
     } catch {
-      return { rule, regex: null, disabled: true };
+      return refuse();
     }
   });
 }
