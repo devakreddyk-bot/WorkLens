@@ -117,8 +117,8 @@ variable "db_backup_retention_days" {
   default     = 7
 
   validation {
-    condition     = var.db_backup_retention_days >= 1 && var.db_backup_retention_days <= 35
-    error_message = "db_backup_retention_days must be between 1 and 35. Zero would disable point-in-time recovery."
+    condition     = var.db_backup_retention_days >= 7 && var.db_backup_retention_days <= 35
+    error_message = "db_backup_retention_days must be between 7 and 35. Zero would disable point-in-time recovery, and modules/database requires at least 7 (docs/PLAN.md section 6) — so 1-6 used to pass here and then fail inside the module, citing a document the operator had no reason to have read."
   }
 }
 

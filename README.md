@@ -52,8 +52,12 @@ title, whether the session is active or idle, and — only if a deployer explici
 periodic screenshots and browser page titles. Screenshots and URL capture are **off by default**,
 work-hours-only mode is **on by default**, and excluded applications and URL patterns are filtered
 on the laptop *before* anything is written to the local buffer, so excluded data is never stored
-and therefore can never be uploaded. The complete list of collected fields, with the retention
-window for each, is expanded in the full documentation under `docs/RESPONSIBLE_USE.md`.
+and therefore can never be uploaded. The complete field list, and the notice an employee is owed
+before any of it starts, are in [docs/RESPONSIBLE_USE.md](docs/RESPONSIBLE_USE.md) — including a
+section addressed to employees rather than to deployers, and a section on **when not to use this at
+all**. Retention is configurable per organisation and documented in
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md); the database refuses a configuration in which
+screenshots would outlive the events they belong to.
 
 ### Your obligations as a deployer
 
@@ -108,42 +112,79 @@ an API Gateway REST API backed by TypeScript Lambdas; PostgreSQL on RDS in a pri
 events and timesheets, S3 holds any screenshots under KMS encryption, EventBridge drives nightly
 aggregation, and a Next.js dashboard on Vercel reads it back through Cognito-authenticated
 reporting endpoints. The Mermaid diagram, the request-signing scheme and the trust boundaries are
-expanded in the full documentation — see `docs/PLAN.md` today and `docs/ARCHITECTURE.md` once
-Phase 7 lands.
+in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), with the request paths and a failure table. The
+design decisions and the ten deviations from the original plan are in [docs/PLAN.md](docs/PLAN.md);
+the security reasoning, including what is *not* defended, is in [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Features
 
-Transparent agent with tray icon and first-run acknowledgment; active application and window-title
-sampling; idle detection from last-input timing; optional blurred screenshots; offline-tolerant
-local buffering with retry and backoff; idempotent batched ingestion; nightly and on-demand
-timesheet aggregation; per-app, per-site, per-category and per-project rollups; CSV and PDF payroll
-export; role-based access for owner, manager and employee; an employee self-view; configurable
-retention with a working hard-delete path; and an audit log of every access to employee data. Each
-feature is expanded in the full documentation.
+Transparent agent with a tray icon and a first-run acknowledgment; active application and
+window-title sampling; idle detection from last-input timing; optional blurred screenshots;
+offline-tolerant local buffering with retry and backoff; idempotent batched ingestion; nightly
+timesheet aggregation; per-app, per-site, per-category and per-project rollups; CSV payroll export;
+role-based access for owner, manager and employee; an employee self-view built from the same
+components as the manager's view; configurable retention with a working hard-delete path; and an
+audit log of every access to employee data.
 
-## Screenshots
+Three things are **not** built, stated here rather than left to be discovered: **PDF export** (the
+API rejects `format=pdf` with a message saying so), **a rule-preview endpoint** (an owner cannot see
+what a project rule would match before saving it), and **on-demand aggregation as an API call** — it
+is an operator action against the aggregation function, for the reasons in
+[docs/SECURITY.md](docs/SECURITY.md) §2.3.1. The CSV also arrives base64-encoded inside a JSON
+envelope rather than as `text/csv`; [docs/API.md](docs/API.md) §5 explains why and what fixing it
+takes.
 
-Dashboard imagery is added alongside the Phase 5 UI and is expanded in the full documentation.
+## What the dashboard looks like
+
+No imagery yet, and the reason is worth stating: WorkLens has never been deployed, so any screenshot
+would be of seeded local data rather than of the product working. Rather than present that as
+evidence, here is the design intent, which the code does implement.
+
+The dashboard is built as **a register, not a console** — a ledger you read, not a surveillance
+console. Flat, no shadows, no rounded corners, no dark mode; ledger-green row banding; Archivo for
+headings and IBM Plex Sans and Mono for everything else.
+
+Its signature element is the **day-band**: a day drawn as a real 24-hour axis, midnight to midnight,
+with recorded active time in ink, idle time in sage, **and everything else left as paper.** The gaps
+are visible. You can see the lunch break and the two hours where nothing was recorded. A
+surveillance dashboard fills that space with a colour and a judgement; a register leaves it blank,
+because blank is what it knows. The same component renders a manager's view of an employee and an
+employee's view of themselves, from the same props — because "you see exactly what your employer
+sees" should not depend on somebody remembering to keep two components in step.
 
 ## Prerequisites
 
 Go 1.23+, Node 22+, Terraform 1.9+, an AWS account with permission to create the resources in
-`infra/`, and a Windows 10/11 machine to run the agent. Exact versions and installation notes are
-expanded in the full documentation; `make bootstrap` verifies what you have installed.
+`infra/`, and a Windows 10/11 machine to run the agent. `make bootstrap` verifies what you have
+installed and fetches each component's dependencies. CI pins Go 1.23, Node 22 and Terraform 1.9.8,
+so those are the versions the build is actually known to work on.
 
 ## Deployment
 
-The backend comes up with a single `terraform apply`, followed by a database migration, a Lambda
-bundle upload, an agent build, and a dashboard deploy — in that order. The step-by-step runbook,
-including the remote-state bootstrap, is expanded in the full documentation under
-`docs/DEPLOYMENT.md`.
+The backend comes up with a remote-state bootstrap, then a `terraform apply`, then a database
+migration, a Lambda bundle upload, an agent build and a dashboard deploy — in that order. The
+migration runs through the `db-migrate` Lambda rather than from a laptop, because RDS sits in a
+private subnet with no public access.
+
+The step-by-step runbook is [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), and what to do once it is
+running is [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
+**Nothing here has been deployed.** `terraform validate` passes and the schema has been verified
+against a live PostgreSQL 16, but no AWS account has ever run this. Treat the runbook as carefully
+derived rather than as tested, and read [docs/SECURITY.md](docs/SECURITY.md) §4 before you rely on
+any of it.
 
 ## Configuration
 
 Every deployer-supplied value lives in a committed `.env.example` or `terraform.tfvars.example`
-template with a comment explaining what it is and where to obtain it; monitoring behaviour itself
-is configured per organisation in the dashboard and fetched by the agent. The full reference is
-expanded in the full documentation under `docs/CONFIGURATION.md`.
+template with a comment explaining what it is and where to obtain it. **No secret is in this
+repository**: the device root key is generated by Terraform into Secrets Manager, and the database
+password is managed by RDS and never enters Terraform state.
+
+Monitoring behaviour is separate from deployment configuration — it is set per organisation in the
+dashboard, fetched by the agent, and applied by the agent locally before anything is uploaded. Every
+one of those settings defaults to the least-invasive value that still produces a defensible
+timesheet. The full reference is [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## Development
 
@@ -163,15 +204,20 @@ agent/       Go agent for Windows (capture, buffer, upload)
 backend/     TypeScript Lambdas, SQL migrations, aggregation
 dashboard/   Next.js 15 dashboard
 infra/       Terraform for the whole AWS backend
-docs/        plan, architecture, API, deployment, responsible use
-scripts/     compliance and build gates run by CI
+contracts/   the HMAC signing vectors, asserted from both Go and TypeScript
+docs/        plan, architecture, agent, API, deployment, configuration,
+             operations, security, responsible use
+scripts/     the six compliance and build gates CI runs
 ```
 
 ## Security
 
-Vulnerability reporting, supported versions and scope are in [SECURITY.md](SECURITY.md). The
-implementation of each security requirement is expanded in the full documentation under
-`docs/SECURITY.md`.
+Vulnerability reporting, supported versions and scope are in [SECURITY.md](SECURITY.md).
+
+[docs/SECURITY.md](docs/SECURITY.md) is the implementation record: how each requirement is met, and —
+in §4 — what is deliberately **not** defended and what remains **unverified**. It names the most
+serious authorisation defect found in this codebase and how it was found, because a security document
+listing only strengths is not useful to anybody deciding whether to trust this.
 
 ## Contributing
 

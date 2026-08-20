@@ -7,7 +7,12 @@
 # then migrated. Two steps, in this order:
 #
 #   1. Create the backend infrastructure. This is its own root module with its own local
-#      state, which is committed as infra/bootstrap/terraform.tfstate — safe, because it
+#      state. That file is NOT in the repository: .gitignore's blanket *.tfstate matches it and
+#      there is no negation. The reasoning below still holds — it holds no secret and nothing
+#      expensive — but it is your responsibility to keep, not git's. Back it up, or reconcile a
+#      prevent_destroy bucket and lock table by hand. Formerly this comment said 'committed', which
+#      was wrong; verify with: git check-ignore -v infra/bootstrap/terraform.tfstate
+#      The original reasoning, unchanged: safe to keep in the open, because it
 #      describes nothing but an empty bucket and an empty table.
 #
 #          cd infra/bootstrap

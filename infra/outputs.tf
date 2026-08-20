@@ -195,6 +195,20 @@ output "alarm_names" {
 
 # --- Deploy summary --------------------------------------------------------
 
+output "dashboard_url" {
+  description = <<-EOT
+    The dashboard's own origin, which is the first (and, per the api module's validation, only)
+    entry in dashboard_origins.
+
+    Output so `make env-dashboard` can emit NEXT_PUBLIC_APP_URL from Terraform rather than leaving a
+    deployer to type it. src/lib/env.ts refuses to start without it, and the OAuth callback is built
+    by appending /api/auth/callback to it — Cognito matches redirect URIs exactly, so a
+    value that disagrees with this one by a trailing slash is a login that fails with nothing useful
+    in any log.
+  EOT
+  value       = var.dashboard_origins[0]
+}
+
 output "next_steps" {
   description = "What to do after a successful apply. Printed so the deploy path does not depend on remembering the docs."
   value       = <<-EOT
