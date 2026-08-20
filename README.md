@@ -200,7 +200,7 @@ review that any change to data collection must pass.
 ```
 agent/       Go agent for Windows (capture, buffer, upload)
 backend/     TypeScript Lambdas, SQL migrations, aggregation
-dashboard/   Next.js 15 dashboard
+dashboard/   Next.js 16 dashboard
 infra/       Terraform for the whole AWS backend
 contracts/   the HMAC signing vectors, asserted from both Go and TypeScript
 docs/        plan, architecture, agent, API, deployment, configuration,

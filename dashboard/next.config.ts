@@ -38,11 +38,6 @@ const config: NextConfig = {
   headers() {
     return Promise.resolve([{ source: '/:path*', headers: securityHeaders }]);
   },
-
-  eslint: {
-    // Linting runs as its own CI job; duplicating it inside the build only slows the build down.
-    ignoreDuringBuilds: true,
-  },
 };
 
 export default config;

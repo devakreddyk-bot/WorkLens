@@ -325,28 +325,35 @@ Stated plainly, because a security document that only lists strengths is not use
   constructions and lets exotic ones through; deciding this in general is not tractable. The real
   defence is the server refusing to store such a pattern.
 
-### 4.1 Two dependency advisories are present and, in this configuration, unreachable
+### 4.1 The dependency advisories are resolved, and one configuration choice is load-bearing
 
-`npm audit` reports three high-severity advisories in `dashboard/`, all transitive through `next`
-and all unfixed on the 15.x line — the remedy npm offers is `next@16`, a major upgrade. The
-dashboard is on 15.5.23, the newest 15.x. Rather than either ignoring this or taking a major bump
-during a hardening pass, here is why neither is reachable as the dashboard is built, and what would
-change that:
+`npm audit` in `dashboard/` is clean. The three high-severity advisories previously recorded here —
+`sharp` < 0.35.0 (inherited libvips CVEs in image decoding) and `postcss` <= 8.5.22 (XSS via an
+unescaped `</style>`, and arbitrary `.map` disclosure via `sourceMappingURL`) — were transitive
+through `next` and unfixed on the 15.x line. The dashboard is now on `next@16.3.1`, which brings
+`sharp` 0.35.3 and `postcss` 8.5.23; both are past the affected ranges.
 
-| Advisory | Why it is not reachable here | What would make it reachable |
-|---|---|---|
-| `sharp` < 0.35.0 — inherited libvips CVEs (image decoding) | `next/image` is not used anywhere, and `next.config.ts` sets `images: { unoptimized: true }`. Screenshots go from the browser to S3 through a presigned URL and are rendered by a plain `<img>`; no image of anybody's screen passes through the Next.js server, so `sharp` never decodes one. | Adopting `next/image` for screenshots, or removing `unoptimized`. Then a compromised agent's uploaded image would reach libvips. |
-| `postcss` <= 8.5.22 — XSS via unescaped `</style>`, and arbitrary `.map` file disclosure via `sourceMappingURL` | PostCSS runs at build time over CSS in this repository, authored by whoever builds it. No user-supplied or runtime CSS is processed. | Processing CSS from any source other than the repository — a themable stylesheet, tenant branding, anything uploaded. |
+Neither advisory was reachable in this configuration before the upgrade either, and half of that
+reasoning is worth keeping, because it is a constraint rather than an accident:
 
-Worth being precise about what this is and is not. It is not a statement that the advisories are
-harmless: both are real, and the `sharp` one would matter a great deal in a product that resized
-uploaded images. It is a statement that the specific code paths they affect are not present. Note
-also that the configuration doing the work was chosen for a different reason — `unoptimized: true`
-is there so that images of people's screens are not proxied through the application server — which
-means it could be reverted by somebody who had no idea it was also load-bearing for this.
+**`next/image` is not used, and screenshots must not start using it.** `next.config.ts` sets
+`images: { unoptimized: true }`. Screenshots go from the browser to S3 through a short-lived
+presigned URL and are rendered by a plain `<img>` with an explicit width and height, so no image of
+anybody's screen passes through the Next.js server. That was chosen as a privacy property — the
+application server is deliberately not in the path of other people's screen contents — and it was
+*also* what kept libvips out of reach. Adopting `next/image` for screenshots, or dropping
+`unoptimized`, gives up the first and re-exposes the second, so it is not a free performance tweak.
+The check that the optimizer is genuinely disabled rather than merely unconfigured is that
+`/_next/image` returns 404 against `next start`; it does.
 
-So: `next@16` is the fix, it belongs in its own change with the build verified against it, and until
-then a reviewer reading `npm audit` should find this table rather than concluding nobody looked.
+**PostCSS processes only CSS authored in this repository**, at build time, by whoever runs the
+build. Processing CSS from any other source — a themable stylesheet, tenant branding, anything
+uploaded — would change that.
+
+Next 16 also tightens the image defaults in the same direction: `remotePatterns` is empty,
+`dangerouslyAllowLocalIP` is `false`, and redirects are capped at 3. None of that is relied on
+while `unoptimized` stands, but none of it should be loosened without a reason.
+
 Re-check with `npm audit` in `dashboard/` after any `next` upgrade.
 
 ---

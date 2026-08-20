@@ -66,7 +66,7 @@ Agent: **Go 1.23**, Windows first, `CGO_ENABLED=0`, SQLite via `modernc.org/sqli
 (pure Go — `mattn/go-sqlite3` would break static cross-compilation).
 Backend: **TypeScript on Node 22, ARM64 Lambda**. Database: **RDS PostgreSQL 16**,
 `db.t4g.micro`, private subnets, IAM auth. Storage: **S3 + SSE-KMS**. Auth: **Cognito**.
-IaC: **Terraform**. Dashboard: **Next.js 15 App Router + Tailwind v4 + Recharts** on Vercel.
+IaC: **Terraform**. Dashboard: **Next.js 16 App Router + Tailwind v4 + Recharts** on Vercel.
 Region default **ap-south-1**.
 
 `docs/PLAN.md` §1 states all ten deviations in full. The ones a new session must not
@@ -125,7 +125,7 @@ worklens/
                  13 test-reporting packages, all passing under -race
   backend/       TypeScript. migrations/ (3), src/{shared,middleware,repositories,
                  schemas,handlers,aggregation}, 17 test files / 427 tests
-  dashboard/     Next.js 15 App Router. 19 routes, src/{app,components,lib}
+  dashboard/     Next.js 16 App Router. 18 routes, src/{app,components,lib}
   infra/         Terraform. bootstrap/ + 10 modules (plus the nested
                  lambda/modules/function), each with its own README
   bin/           built agent binaries (gitignored)

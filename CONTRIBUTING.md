@@ -67,7 +67,7 @@ dependencies. `make help` lists every target.
 | Tool | Minimum | Why |
 |---|---|---|
 | **Go** | **1.23** | The agent. Uses `golang.org/x/sys/windows` and builds with `CGO_ENABLED=0`. |
-| **Node.js** | **22** | Lambdas (Node 22 runtime, ARM64) and the Next.js 15 dashboard. npm ships with it. |
+| **Node.js** | **22** | Lambdas (Node 22 runtime, ARM64) and the Next.js 16 dashboard. npm ships with it. |
 | **Terraform** | **1.9** | All AWS infrastructure. |
 | `zip` | any | Packaging Lambda bundles. Preinstalled on macOS and on GitHub runners. |
 | `git` | 2.30+ | — |
@@ -117,7 +117,7 @@ database. Migrations are forward-only numbered SQL files; apply them with
 `make migrate` (which runs `backend/scripts/migrate.ts`). Never edit a
 migration that has been applied anywhere — add a new one.
 
-#### `dashboard/` — Next.js 15
+#### `dashboard/` — Next.js 16
 
 ```sh
 cd dashboard
@@ -477,7 +477,7 @@ everything, `make lint` checks it.
 ```
 agent/       Go agent for Windows: capture, privacy filters, buffer, upload
 backend/     TypeScript Lambdas, SQL migrations, aggregation, tests
-dashboard/   Next.js 15 App Router dashboard
+dashboard/   Next.js 16 App Router dashboard
 infra/       Terraform: root stack, modules, and the state bootstrap stack
 docs/        plan, architecture, API, deployment, operations, responsible use
 scripts/     compliance gates run by CI and by `make ci`

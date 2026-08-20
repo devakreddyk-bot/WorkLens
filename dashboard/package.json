@@ -2,7 +2,7 @@
   "name": "@worklens/dashboard",
   "version": "0.1.0",
   "private": true,
-  "description": "WorkLens dashboard \u2014 timesheet review, payroll export, and the employee self-view",
+  "description": "WorkLens dashboard — timesheet review, payroll export, and the employee self-view",
   "license": "MIT",
   "engines": {
     "node": ">=22"
@@ -19,7 +19,7 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
-    "next": "^15.1.3",
+    "next": "^16.3.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.15.0",
@@ -33,7 +33,7 @@
     "@types/react-dom": "^19.0.2",
     "@vitest/coverage-v8": "^3.2.7",
     "eslint": "^9.17.0",
-    "eslint-config-next": "^15.1.3",
+    "eslint-config-next": "^16.3.1",
     "globals": "^15.14.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2",

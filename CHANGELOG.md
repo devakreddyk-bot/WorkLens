@@ -23,7 +23,38 @@ section — that is the entry a deployer will look for first.
 
 ## [Unreleased]
 
-Nothing yet.
+### Security
+
+- **Upgraded the dashboard to Next.js 16**, clearing three high-severity `npm
+  audit` advisories that were transitive through `next` and unfixed on the 15.x
+  line: `sharp` < 0.35.0 (inherited libvips CVEs) and `postcss` <= 8.5.22 (XSS
+  via an unescaped `</style>`, and arbitrary `.map` disclosure via
+  `sourceMappingURL`). `npm audit` in `dashboard/` is now clean. Neither
+  advisory was reachable in this configuration — `docs/SECURITY.md` §4.1 records
+  why, and has been updated for the resolved state.
+- **`images: { unoptimized: true }` is unchanged, and deliberately so.**
+  Screenshots still go browser → S3 through a presigned URL and render in a
+  plain `<img>`; no image of anybody's screen passes through the Next.js server.
+  `/_next/image` returns 404, which is the check that the optimizer is disabled
+  rather than merely unconfigured. The five security headers in
+  `next.config.ts` were verified to still be served under 16.
+
+### Changed
+
+- **Dashboard builds now use Turbopack**, which is the Next.js 16 default for
+  both `next dev` and `next build`. There is no custom webpack configuration to
+  migrate. Build output no longer reports the `size` and `First Load JS`
+  columns; Next.js removed them as misleading for server-driven architectures.
+- Removed the `eslint` block from `next.config.ts`: Next.js 16 removed the
+  option, and `next build` no longer runs linting at all. Linting is unchanged
+  as its own CI job (`make lint`).
+- `tsconfig.json` now sets `jsx: react-jsx` and includes `.next/dev/types` —
+  both required by Next.js 16, which otherwise rewrites the file on every build.
+  `next dev` output moved to `.next/dev`.
+
+**Deployers:** Next.js 16 requires Node.js 20.9+ (this project already requires
+22) and drops support for browsers older than Chrome/Edge/Firefox 111 and
+Safari 16.4.
 
 ## [0.1.0] - 2026-08-20
 
