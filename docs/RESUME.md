@@ -314,9 +314,9 @@ Each is stated in `README.md` and `CHANGELOG.md` rather than left to be discover
 - **No rule-preview endpoint.** An owner cannot see what a project rule would match before saving.
 - ~~CSV arrives base64-encoded in a JSON envelope~~ — **fixed.** `src/shared/http.ts` has a
   raw-response branch (`raw`, `attachment`) and the export is a real `text/csv` download.
-- **`next@16` upgrade outstanding.** Three high-severity advisories sit in the dashboard's
-  dependency tree, all transitive through `next` and unfixed on 15.x. Neither is reachable as built
-  — `docs/SECURITY.md` §4.1 says exactly why, and what would make them reachable.
+- ~~`next@16` upgrade outstanding~~ — **done.** The dashboard is on `next@16.3.1` and `npm audit`
+  is clean. `images: { unoptimized: true }` survived the upgrade and is load-bearing for privacy,
+  not performance: see `docs/SECURITY.md` §4.1 before touching it.
 - ~~`final_snapshot_identifier` is a fixed name~~ — **fixed.** It now carries a `random_id` suffix,
   so a second teardown of the same environment no longer collides with the first one's snapshot.
 
