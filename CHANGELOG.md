@@ -78,10 +78,39 @@ release" is what a reader might reasonably expect and will not find.
   trigger a cross-organisation aggregation run. It also could not work — the
   function takes a job event, not a proxy event. No data was disclosed. See
   `docs/SECURITY.md` §2.3.1.
-- **Six CI gates** guard the properties that reviews miss: forbidden capture
+- **Seven CI gates** guard the properties that reviews miss: forbidden capture
   APIs, unjustified IAM wildcards, the README's responsible-use section, the two
-  hand-maintained Lambda lists agreeing, every migration being bundled, and the
-  three hand-maintained route lists agreeing in both directions.
+  hand-maintained Lambda lists agreeing, every migration being bundled, the three
+  hand-maintained route lists agreeing in both directions, and every
+  documentation link and path reference resolving. Each has been verified by
+  reintroducing the defect it exists to catch.
+
+### Fixed before release
+
+Each of these was found during the hardening and documentation phases, and each
+was silent — nothing on screen was wrong.
+
+- **The agent never applied a monitoring-configuration change.** `GET
+  /v1/device/config` returns an envelope and the agent parsed the whole body as
+  a bare configuration, so every setting decoded to zero and validation rejected
+  it on every poll; the response also omitted the employee's `timezone`, which
+  the agent requires. An owner could turn screenshots off, see it saved, and have
+  it reach no device. It failed safe — the agent never collected more than it was
+  permitted to — and silently.
+  `contracts/device-config-response.json` now pins the shape from both sides.
+- **A project rule the aggregation refused to compile was ignored silently.** A
+  `title_regex` pattern over the length cap, containing a nested quantifier, or
+  not valid regex was skipped without reaching the job's warnings, so a rule
+  could look configured and do nothing indefinitely.
+- **A single-event day rendered as the rest of the day** in the dashboard's
+  day-band: five minutes of work at 09:00 drew fifteen hours of active ink, while
+  the totals column beside it said "5m".
+- **An invalid IANA timezone crashed every page drawing a day-band**, rather than
+  degrading to no mark. The value comes from deployer-populated data.
+- **`make env-dashboard` omitted a variable the dashboard requires**
+  (`NEXT_PUBLIC_APP_URL`) and **`make env-backend` pointed `DB_SSL_CA_PATH` at a
+  file that does not exist**, so following the documented setup produced a
+  dashboard that would not boot and a migration that failed TLS.
 
 ### Not in this release
 
@@ -103,7 +132,7 @@ Stated plainly, because each is something a reader might reasonably expect:
 
 - **Nothing has been deployed to AWS.** `terraform validate` passes, the schema
   is verified against a live PostgreSQL 16, and the tests pass across all three
-  components — 427 in the backend, 260 in the agent across 13 packages under
+  components — 442 in the backend, 263 in the agent across 13 packages under
   `-race`, and 102 in the dashboard — but no AWS account has ever run this. IAM has not been
   exercised, the WAF has not seen traffic, and the presigned-upload path has not
   been tested end to end against real S3.
