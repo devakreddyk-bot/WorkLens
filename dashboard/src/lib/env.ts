@@ -1,12 +1,14 @@
 /**
  * Configuration, validated once.
  *
- * Split into two objects on purpose. `publicEnv` holds values that are compiled into the browser
- * bundle; `serverEnv` holds values that must not be, and reading it from a Client Component is a
- * build error rather than a leak.
- *
- * Nothing here is a secret: the Cognito client is public by design (authorisation-code flow with
- * PKCE, no client secret), which is why there is no client secret to misplace.
+ * There is one object, `publicEnv`, and everything in it is compiled into the browser bundle. An
+ * earlier version of this comment described a second `serverEnv` for values that must not be — it
+ * was never written, because it turned out nothing needed it. Nothing here is a secret: the Cognito
+ * client is public by design (authorisation-code flow with PKCE, no client secret), the tokens live
+ * in `httpOnly` cookies the browser cannot read, and every API call goes through a Server Component
+ * or Server Action. If a genuinely server-only value ever arrives, it needs its own module rather
+ * than a second export here — a `NEXT_PUBLIC_` prefix is what decides what ships, and a value in
+ * this file without one is a trap waiting for somebody to add the prefix "for consistency".
  */
 
 const missing: string[] = [];

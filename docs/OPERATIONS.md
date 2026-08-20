@@ -1235,7 +1235,7 @@ From `infra/modules/database/main.tf` and `infra/variables.tf`:
 | `copy_tags_to_snapshot` | `true` | hard-coded |
 | `delete_automated_backups` | `false` | hard-coded — automated backups survive instance deletion |
 | `skip_final_snapshot` | `false` | hard-coded |
-| `final_snapshot_identifier` | `worklens-prod-pg-final` | derived from `name_prefix` |
+| `final_snapshot_identifier` | `worklens-prod-pg-final-<8 hex>` | `name_prefix` plus a `random_id` suffix, so a second teardown does not collide with the first one's snapshot |
 | `deletion_protection` | `true` | `var.db_deletion_protection`, default true |
 | `multi_az` | **`false`** | `var.db_multi_az`, default false — roughly doubles instance cost |
 | Storage encryption | `true`, with the `rds` CMK | hard-coded |

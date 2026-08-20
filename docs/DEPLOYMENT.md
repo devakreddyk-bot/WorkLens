@@ -1150,40 +1150,41 @@ before destroying:
 make tf-apply
 ```
 
-### 2. The final snapshot name collides on a second teardown
+### 2. The final snapshot, and why its name has a random suffix
 
-This is a known wart, recorded in `docs/RESUME.md` and reproduced here because it is a teardown
-step and you will meet it there. `infra/modules/database/main.tf` sets:
+`infra/modules/database/main.tf` sets:
 
 ```
 skip_final_snapshot       = false
-final_snapshot_identifier = "${var.name_prefix}-pg-final"
+final_snapshot_identifier = "${var.name_prefix}-pg-final-${random_id.final_snapshot.hex}"
 ```
 
-The name is **fixed**, derived from `project` and `environment` only, with nothing time-varying in
-it. Destroying `worklens-prod` creates the snapshot `worklens-prod-pg-final`. Standing the same
-environment up again and destroying it a second time fails: RDS refuses to create a snapshot whose
-identifier already exists, and the destroy aborts part-way with a `DBSnapshotAlreadyExists` error
-after other resources have already gone.
+`skip_final_snapshot = false` is deliberate: a production database should not be deletable without a
+copy. The suffix is there because the identifier used to be the bare `${var.name_prefix}-pg-final`,
+which is not unique per destroy — destroying `worklens-prod` left the snapshot
+`worklens-prod-pg-final`, and standing the same environment up and destroying it a second time
+failed with `DBSnapshotAlreadyExists`. That failure arrives at the *last* step of a destroy, after
+every other resource has already gone, and the only way out is deleting the previous snapshot by
+hand while a half-destroyed stack sits in state. Deciding whether a backup is expendable is not a
+decision anybody should be making under that pressure.
 
-`skip_final_snapshot = false` is the right default — a production database should not be deletable
-without a copy. The fix would be a timestamp or a variable in the identifier. Until then, before a
-second teardown of the same environment, either delete the old snapshot (**this destroys your only
-copy of that data — be certain**):
+The suffix comes from `random_id.final_snapshot`, which is generated once and held in Terraform
+state. `timestamp()` would have worked too and was rejected: it is evaluated at plan time, so it
+shows as a perpetual diff on a database nobody has touched, and a resource that always appears
+changed is a resource whose real changes stop being noticed.
 
-```bash
-aws rds delete-db-snapshot --region ap-south-1 --db-snapshot-identifier worklens-prod-pg-final
-```
+Two consequences worth knowing before a teardown:
 
-or keep it and copy it to an archival name first:
+- **Snapshots accumulate.** Each destroy leaves one, and none of them expires on its own. Listing
+  them is the only way to see what you are paying for:
 
-```bash
-aws rds copy-db-snapshot --region ap-south-1 --source-db-snapshot-identifier worklens-prod-pg-final --target-db-snapshot-identifier worklens-prod-pg-final-2026-08-20 --kms-key-id $(terraform -chdir=infra output -raw rds_kms_key_arn)
-```
+  ```bash
+  aws rds describe-db-snapshots --region ap-south-1 --snapshot-type manual --query "DBSnapshots[?starts_with(DBSnapshotIdentifier, 'worklens-prod-pg-final')].[DBSnapshotIdentifier,SnapshotCreateTime,AllocatedStorage]" --output table
+  ```
 
-then delete the original. The copy needs the RDS CMK because the source snapshot is encrypted with
-it — and note that the CMK is itself scheduled for deletion by the destroy, so copy the snapshot
-*before* you destroy, not after.
+- **The suffix regenerates when the instance would be replaced**, via the `keepers` block, so a
+  snapshot name always belongs to the database it was taken from rather than to whatever instance
+  happened to occupy that identifier later.
 
 ### 3. Non-empty S3 buckets
 

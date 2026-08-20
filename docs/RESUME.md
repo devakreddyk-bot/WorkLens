@@ -316,8 +316,8 @@ Each is stated in `README.md` and `CHANGELOG.md` rather than left to be discover
 - **`next@16` upgrade outstanding.** Three high-severity advisories sit in the dashboard's
   dependency tree, all transitive through `next` and unfixed on 15.x. Neither is reachable as built
   — `docs/SECURITY.md` §4.1 says exactly why, and what would make them reachable.
-- **`final_snapshot_identifier`** in `modules/database` is a fixed name, so a second teardown of the
-  same environment collides with the first one's snapshot.
+- ~~`final_snapshot_identifier` is a fixed name~~ — **fixed.** It now carries a `random_id` suffix,
+  so a second teardown of the same environment no longer collides with the first one's snapshot.
 
 ### The Win32 layer will need real hardware
 
@@ -437,9 +437,8 @@ Open, with the reasoning recorded so the next session need not rediscover it:
   a shared module. `deletion_protection` (default true) is the guard instead, and being
   enforced by RDS it also blocks a console or CLI deletion. The misleading comment is fixed;
   the value is intentional.
-- `final_snapshot_identifier` in `modules/database` is a fixed name, so a second teardown of
-  the same environment collides with the snapshot left by the first. Worth suffixing with a
-  timestamp.
+- `final_snapshot_identifier` — **fixed.** Suffixed with a `random_id`, generated once and held in
+  state; `timestamp()` was rejected because it shows as a perpetual diff.
 
 ---
 

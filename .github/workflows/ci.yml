@@ -331,3 +331,6 @@ jobs:
 
       - name: Documentation references resolve
         run: ./scripts/check-docs.sh
+
+      - name: Environment templates match the code
+        run: ./scripts/check-env.sh

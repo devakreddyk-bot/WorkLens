@@ -43,7 +43,7 @@ one of them possible "if configured".
   icon, suppresses the first-run notice, or lets capture start before the
   employee has acknowledged it.
 - Removing an employee's ability to see their own data.
-- Turning any of the seven gates in `scripts/` into a warning instead of a failure.
+- Turning any of the eight gates in `scripts/` into a warning instead of a failure.
 
 Idle detection uses `GetLastInputInfo`, which returns only a timestamp. If a
 change would need more than a timestamp to detect activity, it is out of scope.
@@ -176,6 +176,7 @@ From the repository root:
 | `make check-migrations` | Every migration is bundled into the `db-migrate` Lambda. |
 | `make check-routes` | The dashboard calls only endpoints the backend serves, and every gateway route has a handler behind it. |
 | `make check-docs` | Every documentation link and path reference resolves. |
+| `make check-env` | Both `.env.example` files match the code that reads them. |
 | `make ci` | Everything above, in the order CI runs it. |
 
 `make ci` is what you should run before pushing. Any target whose component

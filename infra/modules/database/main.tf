@@ -75,6 +75,19 @@ resource "aws_cloudwatch_log_group" "postgresql" {
   tags = var.tags
 }
 
+# The final-snapshot suffix. `random_id` rather than `timestamp()`: a timestamp evaluated at plan
+# time changes on every plan and shows as a perpetual diff on an instance nobody touched, and
+# `create_before_destroy` on a database is not an option. This is generated once and kept in state.
+resource "random_id" "final_snapshot" {
+  byte_length = 4
+
+  # Re-generate only when the instance itself would be replaced, so a snapshot name always belongs
+  # to the database it was taken from.
+  keepers = {
+    identifier = "${var.name_prefix}-pg"
+  }
+}
+
 resource "aws_db_instance" "this" {
   identifier = "${var.name_prefix}-pg"
 
@@ -107,13 +120,22 @@ resource "aws_db_instance" "this" {
   multi_az               = var.multi_az
   ca_cert_identifier     = "rds-ca-rsa2048-g1"
 
-  backup_retention_period   = var.backup_retention_period
-  backup_window             = var.backup_window
-  maintenance_window        = var.maintenance_window
-  copy_tags_to_snapshot     = true
-  delete_automated_backups  = false
-  skip_final_snapshot       = false
-  final_snapshot_identifier = "${var.name_prefix}-pg-final"
+  backup_retention_period  = var.backup_retention_period
+  backup_window            = var.backup_window
+  maintenance_window       = var.maintenance_window
+  copy_tags_to_snapshot    = true
+  delete_automated_backups = false
+  skip_final_snapshot      = false
+  # Suffixed with the time the plan was made, because a fixed name collides. RDS refuses to create a
+  # final snapshot whose identifier already exists, so tearing down an environment a second time —
+  # rebuilding a staging stack, most obviously — failed at the very last step of `destroy`, after
+  # every other resource was already gone. The recovery is to delete the previous snapshot by hand
+  # under time pressure, which is exactly when nobody wants to be choosing whether a backup is
+  # expendable.
+  #
+  # `timestamp()` would be a perpetual diff, so this reads the value once from a resource that is
+  # created with the instance and never replaced afterwards.
+  final_snapshot_identifier = "${var.name_prefix}-pg-final-${random_id.final_snapshot.hex}"
 
   deletion_protection = var.deletion_protection
   apply_immediately   = var.apply_immediately
