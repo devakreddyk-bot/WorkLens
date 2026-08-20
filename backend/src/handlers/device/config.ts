@@ -13,9 +13,10 @@
  */
 
 import { touchConfigFetch } from '../../repositories/devices.js';
+import { getEmployeeTimezone } from '../../repositories/employees.js';
 import {
   getMonitoringConfig,
-  presentMonitoringConfig,
+  presentAgentConfig,
 } from '../../repositories/monitoringConfig.js';
 import type { DeviceIdentity } from '../../middleware/deviceAuth.js';
 import { withDeviceAuth } from '../../middleware/deviceAuth.js';
@@ -40,6 +41,19 @@ export const handler = withHandler(
       // After the read, not before: a poll that fails to return a configuration should not be
       // recorded as a successful fetch. The write is not awaited before the read for
       // performance — it is ordered for honesty.
+      // The employee's zone, not the organisation's: the agent evaluates the work-hours window
+      // locally before anything is buffered, and two employees in one organisation can be in
+      // different zones. Absent means the device points at an employee that no longer exists, which
+      // is a data-integrity failure rather than a client error — and defaulting it would silently
+      // move somebody's working day.
+      const timezone = await getEmployeeTimezone(identity.orgId, identity.employeeId);
+      if (timezone === undefined) {
+        throw errors.internal(new Error('device references an employee with no row'), {
+          orgId: identity.orgId,
+          employeeId: identity.employeeId,
+        });
+      }
+
       const touched = await touchConfigFetch(identity.orgId, identity.deviceId);
       if (touched === undefined) {
         // Revoked between authentication and here. Rare, and the correct answer is the same
@@ -48,7 +62,7 @@ export const handler = withHandler(
       }
 
       return ok({
-        config: presentMonitoringConfig(row),
+        config: presentAgentConfig(row, timezone),
         config_version: row.config_version,
         // Lets the agent notice a clock drift that has not yet grown large enough to fail the
         // signature window, which is what `agentctl doctor` reports on.

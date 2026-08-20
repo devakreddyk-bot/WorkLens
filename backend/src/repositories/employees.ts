@@ -975,3 +975,32 @@ export async function finishDeletionRequest(
     tx,
   );
 }
+
+/**
+ * One employee's IANA timezone.
+ *
+ * Its own narrow read rather than a join into `getMonitoringConfig`, because the configuration is
+ * per organisation and the timezone is per employee — joining them would put a per-employee value
+ * into a function every caller treats as organisation-scoped, including the dashboard's.
+ *
+ * Scoped by `org_id` as well as `id`: the device's identity carries both, and a query keyed on the
+ * employee alone would be the one place in the device API that could read across tenants.
+ */
+export async function getEmployeeTimezone(
+  orgId: string,
+  employeeId: string,
+  tx?: Tx,
+): Promise<string | undefined> {
+  const result = await run<{ timezone: string }>(
+    {
+      name: 'employees-timezone',
+      text: `select timezone
+               from employees
+              where org_id = $1
+                and id = $2`,
+      values: [orgId, employeeId],
+    },
+    tx,
+  );
+  return result.rows[0]?.timezone;
+}

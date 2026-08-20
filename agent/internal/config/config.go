@@ -642,6 +642,48 @@ func UnmarshalMonitoringConfig(encoded string) (MonitoringConfig, error) {
 	return m, nil
 }
 
+// ConfigResponse is the body of GET /v1/device/config.
+//
+// The settings are nested under `config`, with the version and the server clock alongside them.
+// This type exists because that nesting was missed once, with consequences worth recording: the
+// daemon passed the whole response body to UnmarshalMonitoringConfig, whose fields are all at the
+// top level. Only config_version matched, every setting decoded to its zero value, and Validate()
+// then rejected the result on "sample_interval_seconds 0 is outside 15-900". The agent logged that
+// the configuration was invalid, kept the cached one, and did so forever.
+//
+// It failed safe — the agent never collected more than it was already permitted to — but it failed
+// closed on the one call that the handler's own comment calls "the single most important one on the
+// device API: it is how an owner turning screenshots off, or adding a banking domain to the
+// exclusion list, actually reaches a laptop". An owner could change a setting in the dashboard, see
+// it saved, and have it never reach the fleet.
+//
+// The enrolment path in internal/uploader modelled the same envelope correctly, so the agent's two
+// config paths disagreed with each other. contracts/device-config-response.json now pins the shape
+// from both sides, the way contracts/signature-vectors.json pins the signing scheme.
+type ConfigResponse struct {
+	Config        MonitoringConfig `json:"config"`
+	ConfigVersion int              `json:"config_version"`
+	// ServerTime lets the agent notice clock drift that has not yet grown large enough to fail the
+	// signature window. `agentctl doctor` reports on it.
+	ServerTime string `json:"server_time"`
+}
+
+// UnmarshalConfigResponse parses a GET /v1/device/config body into a usable configuration.
+//
+// The version comes from the envelope rather than from the nested object, because that is where the
+// server puts it: `presentAgentConfig` projects the settings and deliberately does not include
+// config_version among them. Returning the merged value means a caller cannot forget to copy it and
+// then compare a zero against the version it holds — which would make every poll look like a change.
+func UnmarshalConfigResponse(encoded []byte) (MonitoringConfig, error) {
+	var response ConfigResponse
+	if err := json.Unmarshal(encoded, &response); err != nil {
+		return MonitoringConfig{}, fmt.Errorf("config: the monitoring configuration response is not valid JSON: %w", err)
+	}
+	merged := response.Config
+	merged.ConfigVersion = response.ConfigVersion
+	return merged, nil
+}
+
 // FormatVersion renders a config version for the meta table.
 func FormatVersion(version int) string { return strconv.Itoa(version) }
 

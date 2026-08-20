@@ -85,6 +85,36 @@ export async function getMonitoringConfig(
  * `monitoring_config` does not silently start shipping it to every device on the fleet. A
  * new setting reaches the agent when someone decides it should.
  */
+/**
+ * The agent's view of the configuration: the row, plus the employee's timezone.
+ *
+ * A separate type and function from `presentMonitoringConfig` on purpose. The timezone is not a
+ * column on `monitoring_config` — it lives on `employees`, because work hours are local to a person
+ * and two employees in one organisation can be in different zones. It belongs in the agent's payload
+ * because the agent evaluates the work-hours window locally, before anything is buffered, and it
+ * cannot do that without knowing which clock the window is in.
+ *
+ * It does **not** belong in the dashboard's `GET /config` response, which is why that path keeps the
+ * narrower projection. Adding it there would imply the organisation has one timezone, and an admin
+ * editing a per-organisation setting should not appear to be editing a per-employee one.
+ *
+ * The agent requires it: `MonitoringConfig.Validate()` in `internal/config` refuses a configuration
+ * with no timezone rather than defaulting to the laptop's, which is user-changeable. Omitting it
+ * here means the agent rejects every configuration it fetches — which is precisely what happened
+ * until `contracts/device-config-response.json` pinned this shape from both sides.
+ */
+export interface AgentConfigPayload extends AgentMonitoringConfig {
+  /** The employee's IANA zone, from `employees.timezone`. */
+  timezone: string;
+}
+
+export function presentAgentConfig(
+  row: MonitoringConfigRow,
+  timezone: string,
+): AgentConfigPayload {
+  return { ...presentMonitoringConfig(row), timezone };
+}
+
 export function presentMonitoringConfig(row: MonitoringConfigRow): AgentMonitoringConfig {
   return {
     sample_interval_seconds: row.sample_interval_seconds,

@@ -554,7 +554,10 @@ func (d *daemon) pollConfig(ctx context.Context) {
 		return
 	}
 
-	fetched, err := config.UnmarshalMonitoringConfig(string(raw))
+	// The response is an envelope — {config, config_version, server_time} — not a bare
+	// configuration. Passing the whole body to UnmarshalMonitoringConfig decoded every setting to
+	// its zero value and made Validate() reject it on every poll; see config.ConfigResponse.
+	fetched, err := config.UnmarshalConfigResponse(raw)
 	if err != nil {
 		d.log.Warn("the monitoring configuration was unreadable; keeping the cached one",
 			logging.Any("error", err.Error()))

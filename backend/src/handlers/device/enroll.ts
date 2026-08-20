@@ -37,9 +37,10 @@ import {
   lookupEnrollmentToken,
   markEnrollmentTokenUsed,
 } from '../../repositories/enrollment.js';
+import { getEmployeeTimezone } from '../../repositories/employees.js';
 import {
   getMonitoringConfig,
-  presentMonitoringConfig,
+  presentAgentConfig,
 } from '../../repositories/monitoringConfig.js';
 import { enrollRequestSchema } from '../../schemas/enroll.js';
 import { parseBody } from '../../schemas/parse.js';
@@ -54,7 +55,7 @@ interface EnrolledDeviceContext {
   orgId: string;
   employeeId: string;
   keyVersion: number;
-  config: ReturnType<typeof presentMonitoringConfig>;
+  config: ReturnType<typeof presentAgentConfig>;
   configVersion: number;
 }
 
@@ -144,6 +145,17 @@ export const handler = withHandler('enroll', async (ctx: RequestContext): Promis
       throw errors.internal(new Error('organisation has no monitoring_config row'), { orgId });
     }
 
+    // Read inside the same transaction as the configuration, so an agent's first payload and every
+    // later poll describe one consistent state. The agent's `Validate()` refuses a configuration
+    // with no timezone, so this is required rather than decorative.
+    const timezone = await getEmployeeTimezone(orgId, employeeId, tx);
+    if (timezone === undefined) {
+      throw errors.internal(new Error('enrolment token references an employee with no row'), {
+        orgId,
+        employeeId,
+      });
+    }
+
     await insertAuditLog(
       orgId,
       {
@@ -170,7 +182,7 @@ export const handler = withHandler('enroll', async (ctx: RequestContext): Promis
       orgId,
       employeeId,
       keyVersion: device.key_version,
-      config: presentMonitoringConfig(monitoringConfig),
+      config: presentAgentConfig(monitoringConfig, timezone),
       configVersion: monitoringConfig.config_version,
     };
   });

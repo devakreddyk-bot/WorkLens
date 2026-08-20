@@ -91,6 +91,10 @@ function mockSuccessfulWrites(): void {
       retention_days_screenshots: 30,
     },
   ]);
+  // The enrolment response carries the same agent payload as GET /device/config, so it needs the
+  // employee's timezone too — read in the same transaction, so a device's first configuration and
+  // every later poll describe one consistent state.
+  whenQuery(/from employees/, [{ timezone: 'Asia/Kolkata' }]);
 }
 
 beforeEach(() => {

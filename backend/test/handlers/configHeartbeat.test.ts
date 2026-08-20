@@ -50,6 +50,11 @@ function mockMonitoringConfig(): void {
       retention_days_screenshots: 30,
     },
   ]);
+  // The agent's payload carries the employee's timezone, which is not a monitoring_config column —
+  // it comes from `employees`. Mocked alongside the configuration because a handler that serves one
+  // always needs the other, and a test that supplied only the configuration would be describing a
+  // response the agent cannot use. See contracts/device-config-response.json.
+  whenQuery(/from employees/, [{ timezone: 'Asia/Kolkata' }]);
 }
 
 function deviceStateRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -105,6 +110,11 @@ describe('device config', () => {
       excluded_url_patterns: ['*.bank.example', '*.health.example'],
       retention_days_events: 90,
       retention_days_screenshots: 30,
+      // The employee's zone, from `employees.timezone`. The agent evaluates the work-hours window
+      // locally before anything is buffered, and its Validate() refuses a configuration without
+      // one. A deep-equal rather than a subset match on purpose: an extra field here reaches every
+      // device on the fleet.
+      timezone: 'Asia/Kolkata',
     });
   });
 
