@@ -23,7 +23,14 @@ section — that is the entry a deployer will look for first.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **`make agent-test` (and `make ci`) now pass on a fresh clone.** The four
+  Amazon root CA certificates the agent's TLS pinning tests read as fixtures
+  were being swallowed by `.gitignore`'s blanket `*.pem` rule, so every clone
+  and every `git worktree` checkout failed seven tests with a missing-file
+  error. They are public CA certificates, not key material, and are now
+  force-included alongside the RDS trust store — see `docs/SECURITY.md` §3.4.
 
 ## [0.1.0] - 2026-08-20
 

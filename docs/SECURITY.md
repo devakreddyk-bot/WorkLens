@@ -23,7 +23,7 @@ is worse than no claim. Where something is unverified, it says so.
 | 5 | `org_id` scoping enforced on every query | `backend/src/repositories/**` | Every repository function takes `orgId` first, from the verified token. Audited by grepping every `from <tenant table>` for an `org_id` predicate; the single exception is the enrolment-token lookup, where the org is what the lookup *returns*. |
 | 6 | Database in a private subnet; WAF + rate limiting | `infra/modules/network`, `infra/modules/database`, `infra/modules/waf` | RDS in two private subnets, `publicly_accessible = false`, security group ingress only from the Lambda SG on 5432. WAF WebACL on the REST API stage: AWS managed common + known-bad-inputs, a rate-based rule at 2 000 per 5 minutes per IP, and a tighter 100 on the enrolment path. Stage throttling 200 rps / 400 burst. Per-device application quota on top. |
 | 7 | Strict input validation; parameterised queries only | `backend/src/schemas/**`, `backend/src/repositories/**` | Zod at the boundary of every handler, `.strict()` so unknown keys are rejected. All SQL uses positional parameters; verified by grepping for `${` inside a `text:` template across every repository and handler. An eslint rule additionally bans template literals with interpolation in that position. |
-| 8 | `.gitignore` covers keys, env, artefacts, SQLite, TF state | `.gitignore` | Verified with `git check-ignore` over 39 paths, confirming `*.tfstate*`, `*.tfvars`, `.env`, `*.db*`, `*.pem`, `credentials.json` and `backend/artifacts/` are ignored while `.terraform.lock.hcl`, `*.tfvars.example` and `.env.example` stay tracked. gitleaks runs in CI over full history as the backstop. One deliberate exception: `backend/assets/rds-ca-global-bundle.pem` is force-included — see §3.4. |
+| 8 | `.gitignore` covers keys, env, artefacts, SQLite, TF state | `.gitignore` | Verified with `git check-ignore` over 39 paths, confirming `*.tfstate*`, `*.tfvars`, `.env`, `*.db*`, `*.pem`, `credentials.json` and `backend/artifacts/` are ignored while `.terraform.lock.hcl`, `*.tfvars.example` and `.env.example` stay tracked. gitleaks runs in CI over full history as the backstop. Two deliberate exceptions, both public CA certificates rather than key material: `backend/assets/rds-ca-global-bundle.pem` and the agent's `agent/internal/uploader/testdata/AmazonRootCA{1,2,3,4}.pem` pinning fixtures are force-included — see §3.4. |
 | 9 | `.env.example` for every service; real values never in the repo | `backend/.env.example`, `dashboard/.env.example`, `infra/terraform.tfvars.example` | Every variable documented with what it is and where to get it. `make env-backend` and `make env-dashboard` generate the real files from Terraform outputs. The agent deliberately has **no** `.env`: its settings live in `config.json` and its credential in `credentials.json`, both written by `worklens-agentctl` at mode `0600` in the user's profile. An earlier version of this row claimed an `agent/.env.example` that does not exist. |
 | 10 | CloudTrail enabled + application-level audit log | `infra/modules/observability`, `backend/src/middleware/audit.ts` | Multi-region CloudTrail to a dedicated bucket with a lifecycle policy. `audit_log` written on every read of employee data, every configuration change, every export and every device revocation. `worklens_app` has `INSERT`/`SELECT` and **no `UPDATE` or `DELETE`** — verified by attempting both against a live database. |
 | 11 | Configurable data retention + working hard-delete path | `backend/src/handlers/jobs/retentionSweeper.ts`, `admin.ts` | Per-organisation windows in `monitoring_config`; nightly sweeper deletes rows and S3 objects past them, bounded per run. Erasure requests perform a genuine hard delete with the counts recorded. S3 lifecycle rules act as a second line. Both paths delete the object before the row that points at it — see §2.4. |
@@ -281,15 +281,26 @@ The security consequence is worth stating: an in-VPC function has no route to th
 A new AWS API call from one will hang rather than fail fast, and adding a service means adding an
 endpoint — which is friction, and the friction is the point.
 
-### 3.4 One PEM is committed on purpose
+### 3.4 Some PEMs are committed on purpose
 
-`backend/assets/rds-ca-global-bundle.pem` is force-included past `.gitignore`'s `*.pem` rule. It is
-AWS's published RDS trust store, not a secret, and it must ship inside every Lambda package: the
-functions verify the database certificate with `verify-full` and have no route to fetch it at run
-time. Committing it also keeps the build reproducible offline and in CI.
+`.gitignore` ignores `*.pem` wholesale, and two sets of certificates are force-included past that
+rule. Both are published, public certificate authority certificates. Neither is key material.
+
+**`backend/assets/rds-ca-global-bundle.pem`** is AWS's published RDS trust store, and it must ship
+inside every Lambda package: the functions verify the database certificate with `verify-full` and
+have no route to fetch it at run time. Committing it also keeps the build reproducible offline and
+in CI.
 
 `src/shared/db.ts` **fails closed** if it cannot find the bundle. Silently downgrading to an
 unverified connection is exactly what `verify-full` was configured to prevent.
+
+**`agent/internal/uploader/testdata/AmazonRootCA{1,2,3,4}.pem`** are Amazon's four public roots,
+from <https://www.amazontrust.com/repository/>, and they are the fixtures for the agent's TLS
+pinning tests. `TestPinConstantsMatchAmazonRoots` exists to catch a mistyped or truncated SPKI pin
+constant — a mistake review cannot see, whose consequence is the whole fleet failing to connect on
+the day it is deployed — and it can only do that against the real certificates. Fixtures generated
+at test time would prove only that the test agrees with itself. Committing them also means
+`make agent-test` passes on a fresh clone with nothing copied in by hand.
 
 ---
 

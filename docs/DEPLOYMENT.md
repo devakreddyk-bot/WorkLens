@@ -240,8 +240,8 @@ Two things the bundler does that matter to this runbook:
 
 - **Every zip carries `backend/assets/rds-ca-global-bundle.pem`.** The private subnets have no
   route to the internet, so a function cannot fetch AWS's RDS trust store at run time, and
-  `src/shared/db.ts` fails closed rather than downgrading to an unverified connection. This is the
-  one PEM deliberately force-included past `.gitignore` — see `docs/SECURITY.md` §3.4.
+  `src/shared/db.ts` fails closed rather than downgrading to an unverified connection. This PEM is
+  deliberately force-included past `.gitignore` — see `docs/SECURITY.md` §3.4.
 - **`db-migrate` embeds the `.sql` files as strings** via esbuild's text loader, so a function
   version and its migration set are one artifact.
 

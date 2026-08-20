@@ -87,6 +87,12 @@ override.tf.json
 # no route to the internet to fetch it at runtime, so it ships inside each deployment zip.
 # Committing it also keeps `make backend-build` reproducible offline and in CI.
 !backend/assets/rds-ca-global-bundle.pem
+# ...and except Amazon's four public root CA certificates, which are the fixtures for the TLS
+# pinning tests. They are published certificate authority certificates, not secrets, and the whole
+# point of TestPinConstantsMatchAmazonRoots is to check the agent's compiled-in SPKI pin constants
+# against the real roots — generated fixtures would only prove the test agrees with itself. Without
+# these committed, `make agent-test` fails on every fresh clone and worktree.
+!agent/internal/uploader/testdata/*.pem
 *.key
 *.p12
 *.pfx
