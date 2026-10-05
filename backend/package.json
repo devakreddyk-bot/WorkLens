@@ -22,27 +22,27 @@
     "gen:vectors": "tsx scripts/genSignatureVectors.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-cognito-identity-provider": "^3.1113.0",
-    "@aws-sdk/client-lambda": "^3.699.0",
-    "@aws-sdk/client-s3": "^3.699.0",
-    "@aws-sdk/client-secrets-manager": "^3.699.0",
-    "@aws-sdk/rds-signer": "^3.699.0",
-    "@aws-sdk/s3-request-presigner": "^3.699.0",
-    "pg": "^8.13.1",
+    "@aws-sdk/client-cognito-identity-provider": "^3.1145.0",
+    "@aws-sdk/client-lambda": "^3.1145.0",
+    "@aws-sdk/client-s3": "^3.1145.0",
+    "@aws-sdk/client-secrets-manager": "^3.1145.0",
+    "@aws-sdk/rds-signer": "^3.1145.0",
+    "@aws-sdk/s3-request-presigner": "^3.1145.0",
+    "pg": "^8.23.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
-    "@types/aws-lambda": "^8.10.146",
+    "@types/aws-lambda": "^8.10.164",
     "@types/node": "^22.10.2",
     "@types/pg": "^8.11.10",
     "@vitest/coverage-v8": "^2.1.8",
-    "esbuild": "^0.24.2",
+    "esbuild": "^0.28.2",
     "eslint": "^9.17.0",
     "globals": "^15.14.0",
-    "tsx": "^4.19.2",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.2",
-    "typescript-eslint": "^8.18.2",
+    "typescript-eslint": "^8.71.0",
     "vitest": "^2.1.8"
   }
 }
