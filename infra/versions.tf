@@ -9,7 +9,7 @@ terraform {
       # Pinned to the v5 major. v6 changed provider-level defaults around default tags
       # and S3 bucket resources; moving to it is a deliberate upgrade with a plan review,
       # not something a fresh `terraform init` should do on its own.
-      version = "~> 5.70"
+      version = "~> 6.70"
     }
 
     random = {
